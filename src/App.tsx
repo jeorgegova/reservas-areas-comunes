@@ -11,7 +11,6 @@ import MyReservationsPage from './pages/MyReservations';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminReservationsPage from './pages/admin/AdminReservations';
 import AdminAreasPage from './pages/admin/AdminAreas';
-import AdminNoticesPage from './pages/admin/AdminNotices';
 import AdminUsersPage from './pages/admin/AdminUsers';
 import ProfilePage from './pages/Profile';
 import MaintenancePage from './pages/Maintenance';
@@ -94,16 +93,6 @@ function App() {
               <PrivateRoute adminOnly>
                 <DashboardLayout>
                   <AdminAreasPage />
-                </DashboardLayout>
-              </PrivateRoute>
-            } 
-          />
-          <Route 
-            path="/admin/notices" 
-            element={
-              <PrivateRoute adminOnly>
-                <DashboardLayout>
-                  <AdminNoticesPage />
                 </DashboardLayout>
               </PrivateRoute>
             } 

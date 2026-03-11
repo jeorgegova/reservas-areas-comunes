@@ -9,6 +9,7 @@ import {
   formatTime, 
   cn 
 } from '@/lib/utils';
+import { format } from 'date-fns';
 import { 
   Search, 
   Filter, 
@@ -55,7 +56,7 @@ export default function AdminReservationsPage() {
       .from('reservations')
       .update({ 
         status: newStatus,
-        updated_at: new Date().toISOString()
+        updated_at: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss")
       })
       .eq('id', id);
 

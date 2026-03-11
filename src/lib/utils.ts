@@ -13,18 +13,26 @@ export function formatCurrency(amount: number) {
   }).format(amount);
 }
 
+export function detoxTime(date: string) {
+  if (!date) return '';
+  // Strips offsets like +00, +05:00, Z and ensures 'T' separator
+  return date.replace(' ', 'T').replace(/(\+.*|Z|-[0-9]{2}:[0-9]{2})$/, '');
+}
+
 export function formatDate(date: string | Date) {
+  const d = typeof date === 'string' ? new Date(detoxTime(date)) : date;
   return new Intl.DateTimeFormat('es-CO', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  }).format(new Date(date));
+  }).format(d);
 }
 
 export function formatTime(date: string | Date) {
+  const d = typeof date === 'string' ? new Date(detoxTime(date)) : date;
   return new Intl.DateTimeFormat('es-CO', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  }).format(new Date(date));
+  }).format(d);
 }

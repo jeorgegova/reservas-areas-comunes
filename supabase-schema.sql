@@ -13,8 +13,8 @@ CREATE TABLE profiles (
   phone TEXT,
   apartment TEXT,
   role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- 2. Common Areas
@@ -26,7 +26,7 @@ CREATE TABLE common_areas (
   cost_per_hour NUMERIC DEFAULT 0,
   image_url TEXT,
   is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- 3. Reservations
@@ -34,8 +34,8 @@ CREATE TABLE reservations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   common_area_id UUID NOT NULL REFERENCES common_areas(id) ON DELETE CASCADE,
-  start_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
-  end_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
+  start_datetime TIMESTAMP NOT NULL,
+  end_datetime TIMESTAMP NOT NULL,
   total_cost NUMERIC DEFAULT 0,
   status TEXT DEFAULT 'pending_payment' CHECK (
     status IN (
@@ -64,20 +64,21 @@ CREATE TABLE payments (
     status IN ('pending', 'completed', 'failed')
   ),
   validated_by UUID REFERENCES profiles(id),
-  validated_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  validated_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- 5. Maintenance Notices
 CREATE TABLE maintenance_notices (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
-  description TEXT,
-  common_area_id UUID REFERENCES common_areas(id) ON DELETE SET NULL,
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
+  content TEXT, -- Consistent naming with component
+  common_area_id UUID NOT NULL REFERENCES common_areas(id) ON DELETE CASCADE,
+  starts_at TIMESTAMP NOT NULL,
+  ends_at TIMESTAMP NOT NULL,
+  severity TEXT DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'critical')),
   is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- =========================

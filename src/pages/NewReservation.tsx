@@ -6,15 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, detoxTime } from '@/lib/utils';
 import { 
   Clock, 
   AlertCircle, 
   ArrowRight,
   ChevronLeft,
-  Building2
+  Building2,
+  Hammer
 } from 'lucide-react';
-import { format, addHours } from 'date-fns';
+import { format, addHours, parseISO } from 'date-fns';
 
 export default function NewReservationPage() {
   const { profile } = useAuth();
@@ -27,6 +28,7 @@ export default function NewReservationPage() {
   const [selectedStartTime, setSelectedStartTime] = useState<string>('');
   const [duration, setDuration] = useState<number>(1);
   const [existingReservations, setExistingReservations] = useState<any[]>([]);
+  const [activeMaintenances, setActiveMaintenances] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(false);
   const [blockingError, setBlockingError] = useState<string | null>(null);
@@ -39,7 +41,7 @@ export default function NewReservationPage() {
   const checkPendingReservations = async () => {
     if (!profile) return;
     
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('reservations')
       .select('id')
       .eq('user_id', profile.id)
@@ -55,26 +57,36 @@ export default function NewReservationPage() {
     setAreas(data || []);
   };
 
-  const fetchExistingReservations = async (areaId: string, date: string) => {
-    const { data } = await supabase
+  const fetchBusySlots = async (areaId: string) => {
+    // Fetch reservations
+    const { data: resData } = await supabase
       .from('reservations')
       .select('start_datetime, end_datetime')
       .eq('common_area_id', areaId)
       .in('status', ['approved', 'pending_validation', 'pending_payment']);
     
-    setExistingReservations(data || []);
+    setExistingReservations(resData || []);
+
+    // Fetch maintenance notices for this area or general notices
+    const { data: maintData } = await supabase
+      .from('maintenance_notices')
+      .select('starts_at, ends_at, severity, title, content')
+      .or(`common_area_id.eq.${areaId},common_area_id.is.null`)
+      .eq('is_active', true);
+
+    setActiveMaintenances(maintData || []);
   };
 
   const handleAreaSelect = (area: any) => {
     setSelectedArea(area);
     setStep(2);
-    fetchExistingReservations(area.id, selectedDate);
+    fetchBusySlots(area.id);
   };
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date);
     if (selectedArea) {
-      fetchExistingReservations(selectedArea.id, date);
+      fetchBusySlots(selectedArea.id);
     }
   };
 
@@ -84,24 +96,37 @@ export default function NewReservationPage() {
     return `${hour.toString().padStart(2, '0')}:00`;
   });
 
-  const isSlotOccupied = (time: string) => {
-    const slotStart = new Date(`${selectedDate}T${time}:00`);
+  const getSlotStatus = (time: string) => {
+    const slotStart = parseISO(`${selectedDate}T${time}:00`);
     const slotEnd = addHours(slotStart, duration);
 
-    return existingReservations.some(res => {
-      const resStart = new Date(res.start_datetime);
-      const resEnd = new Date(res.end_datetime);
-      
+    // Check reservations
+    const isReserved = existingReservations.some(res => {
+      const resStart = parseISO(detoxTime(res.start_datetime));
+      const resEnd = parseISO(detoxTime(res.end_datetime));
       return (slotStart < resEnd && slotEnd > resStart);
     });
+
+    if (isReserved) return { status: 'reserved' };
+
+    // Check maintenance
+    const maintenance = activeMaintenances.find(maint => {
+      const maintStart = parseISO(detoxTime(maint.starts_at));
+      const maintEnd = parseISO(detoxTime(maint.ends_at));
+      return (slotStart < maintEnd && slotEnd > maintStart);
+    });
+
+    if (maintenance) return { status: 'maintenance', reason: maintenance.title };
+
+    return { status: 'available' };
   };
 
   const handleReserve = async () => {
     if (!profile || !selectedArea || !selectedStartTime) return;
     
     setLoading(true);
-    const start = new Date(`${selectedDate}T${selectedStartTime}:00`).toISOString();
-    const end = addHours(new Date(`${selectedDate}T${selectedStartTime}:00`), duration).toISOString();
+    const start = `${selectedDate}T${selectedStartTime}:00`;
+    const end = format(addHours(parseISO(`${selectedDate}T${selectedStartTime}:00`), duration), "yyyy-MM-dd'T'HH:mm:ss");
     const totalCost = selectedArea.cost_per_hour * duration;
 
     try {
@@ -243,26 +268,60 @@ export default function NewReservationPage() {
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 relative z-20">
                 <Label className="text-base">Horas disponibles</Label>
-                <div className="grid grid-cols-3 gap-2 max-h-[250px] overflow-y-auto p-1">
+                <div className="grid grid-cols-3 gap-2 p-1">
                   {timeSlots.map(time => {
-                    const occupied = isSlotOccupied(time);
+                    const info = getSlotStatus(time);
+                    const isOccupied = info.status !== 'available';
+                    
                     return (
-                      <Button
-                        key={time}
-                        variant={selectedStartTime === time ? "default" : "outline"}
-                        disabled={occupied}
-                        onClick={() => setSelectedStartTime(time)}
-                        className={cn(
-                          "h-10 text-sm",
-                          occupied && "opacity-40 cursor-not-allowed bg-gray-100"
+                      <div key={time} className="relative group hover:z-50">
+                        <Button
+                          variant={selectedStartTime === time ? "default" : "outline"}
+                          disabled={isOccupied}
+                          onClick={() => setSelectedStartTime(time)}
+                          className={cn(
+                            "w-full h-10 text-sm flex flex-col gap-0.5 relative overflow-hidden transition-all",
+                            info.status === 'reserved' && "opacity-40 cursor-not-allowed bg-gray-100",
+                            info.status === 'maintenance' && "opacity-80 cursor-not-allowed bg-gray-700 text-white border-none"
+                          )}
+                        >
+                          <span>{time}</span>
+                          {info.status === 'maintenance' && (
+                            <Hammer className="w-3 h-3 absolute bottom-1 right-1 opacity-50" />
+                          )}
+                        </Button>
+                        
+                        {isOccupied && (
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-gray-900 text-white text-[11px] rounded-lg shadow-2xl opacity-0 -translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-[100] w-48 text-center border border-white/10 backdrop-blur-md">
+                            <div className="font-bold border-b border-white/10 pb-1 mb-1 uppercase tracking-tighter text-[10px] text-gray-400">
+                              {info.status === 'maintenance' ? 'Mantenimiento' : 'Horario Ocupado'}
+                            </div>
+                            <div className="leading-tight">
+                              {info.status === 'maintenance' ? info.reason : 'Ya existe una reserva aprobada o en proceso para este horario.'}
+                            </div>
+                            {/* Arrow */}
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-8 border-transparent border-b-gray-900" />
+                          </div>
                         )}
-                      >
-                        {time}
-                      </Button>
+                      </div>
                     );
                   })}
+                </div>
+                <div className="flex flex-wrap gap-4 pt-2 text-[10px] uppercase font-bold tracking-wider">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-sm border" />
+                    <span className="text-muted-foreground">Disponible</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-sm bg-gray-200" />
+                    <span className="text-muted-foreground">Reservado</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-sm bg-gray-700" />
+                    <span className="text-muted-foreground">Mantenimiento</span>
+                  </div>
                 </div>
               </div>
             </div>

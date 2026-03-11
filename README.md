@@ -1,73 +1,149 @@
-# React + TypeScript + Vite
+# Reservas de Áreas Comunes
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Sistema de gestión de reservas para áreas comunes de edificios residenciales o comerciales. Permite a los usuarios reservar espacios como salones de eventos, gimnasios, piscinas, etc., y a los administradores gestionar las reservas, áreas y usuarios.
 
-Currently, two official plugins are available:
+## 🚀 Tecnologías
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Frontend:** React 18 + TypeScript + Vite
+- **Estado y autenticación:** Supabase (auth, base de datos en tiempo real)
+- **Estilos:** Tailwind CSS
+- **Linting:** ESLint con reglas de TypeScript avanzadas
+- **Iconos:** React Icons (implícito en los componentes)
 
-## React Compiler
+## ✨ Características
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Para usuarios comunes:
+- 🔐 Autenticación segura (email/password, recuperación de contraseña)
+- 📅 Reserva de áreas comunes con selección de fecha y hora
+- 📋 Visualización de mis reservas próximas y pasadas
+- 👤 Gestión de perfil de usuario
+- 💳 Simulación de pagos (modo mock)
 
-## Expanding the ESLint configuration
+### Para administradores:
+- 🏢 Gestión de áreas comunes (crear, editar, eliminar)
+- 👥 Gestión de usuarios (ver roles, cambiar estados)
+- 📊 Dashboard con estadísticas y reservas recientes
+- 📢 Sistema de anuncios/notificaciones
+- 📅 Gestión completa de todas las reservas
+- 🔍 Filtros y búsquedas avanzadas
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🛠️ Instalación y configuración
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Prerrequisitos
+- Node.js (v16 o superior)
+- npm o yarn
+- Una cuenta en [Supabase](https://supabase.io/)
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Pasos para ejecutar localmente
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+1. **Clonar el repositorio**
+   ```bash
+   git clone <url-del-repositorio>
+   cd reservas-areas-comunes
+   ```
+
+2. **Instalar dependencias**
+   ```bash
+   npm install
+   # o
+   yarn
+   ```
+
+3. **Configurar variables de entorno**
+   Copia `.env.example` a `.env` y completa los valores:
+   ```env
+   VITE_SUPABASE_URL=tu_url_de_supabase
+   VITE_SUPABASE_ANON_KEY=tu_anon_key_de_supabase
+   ```
+
+4. **Configurar la base de datos en Supabase**
+   - Ejecuta el esquema SQL en `supabase-schema.sql` en tu proyecto de Supabase
+   - Esto creará las tablas necesarias: areas, reservas, usuarios, anuncios, etc.
+
+5. **Iniciar el servidor de desarrollo**
+   ```bash
+   npm run dev
+   # o
+   yarn dev
+   ```
+
+   La aplicación estará disponible en `http://localhost:5173`
+
+## 📦 Scripts disponibles
+
+- `npm run dev` - Inicia el servidor de desarrollo con Vite
+- `npm run build` - Compila la aplicación para producción
+- `npm run preview` - Vista previa de la build de producción
+- `npm run lint` - Ejecuta ESLint para revisar el código
+
+## 🧩 Estructura del proyecto
+
+```
+src/
+├── assets/           # Recursos estáticos
+├── components/       # Componentes reutilizables
+│   ├── layout/       # Layouts principales (DashboardLayout)
+│   └── ui/           # Componentes UI básicos (button, input, label, card)
+├── hooks/            # Hooks personalizados (useAuth)
+├── lib/              # Configuraciones y utilities (supabase, utils)
+├── pages/            # Páginas de la aplicación
+│   ├── admin/        # Panel de administración
+│   │   ├── AdminAreas.tsx
+│   │   ├── AdminDashboard.tsx
+│   │   ├── AdminNotices.tsx
+│   │   ├── AdminReservations.tsx
+│   │   └── AdminUsers.tsx
+│   ├── Dashboard.tsx
+│   ├── Login.tsx
+│   ├── Register.tsx
+│   ├── ForgotPassword.tsx
+│   ├── Maintenance.tsx
+│   ├── MyReservations.tsx
+│   ├── NewReservation.tsx
+│   ├── PaymentMock.tsx
+│   └── Profile.tsx
+├── App.tsx           # Componente raíz
+├── main.tsx          # Entrada de la aplicación
+└── index.css         # Estilos globales
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🔐 Autenticación
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+La aplicación utiliza Supabase Auth para la gestión de usuarios. Los flujos de autenticación incluyen:
+- Registro de nuevos usuarios
+- Inicio de sesión con email y password
+- Recuperación de contraseña
+- Sesiones persistentes
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🗄️ Base de datos
+
+El esquema de la base de datos (en `supabase-schema.sql`) incluye:
+
+- **users:** Información de los usuarios (rol, estado, etc.)
+- **areas:** Áreas comunes disponibles para reserva
+- **reservations:** Reservas realizadas por los usuarios
+- **notices:** Anuncios o notificaciones para los usuarios
+- **payment_mocks:** Registro de pagos simulados (para testing)
+
+## 🎨 Personalización
+
+Los estilos están basados en Tailwind CSS. Puedes modificar:
+- `tailwind.config.js` para cambiar colores, fuentes, breakpoints, etc.
+- `src/index.css` para estilos globales adicionales
+- Los componentes en `src/components/ui/` para ajustar la apariencia de elementos básicos
+
+## 🤝 Contribución
+
+1. Haz un fork del repositorio
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+
+## 📄 Licencia
+
+Este proyecto está bajo la licencia MIT. Ver el archivo `LICENSE` para más detalles.
+
+## 📧 Contacto
+
+Para preguntas o soporte, por favor abre un issue en el repositorio.
