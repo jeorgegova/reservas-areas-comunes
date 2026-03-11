@@ -35,7 +35,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (profile?.role === 'admin') {
     navItems.splice(1, 0, { name: 'Gestión Reservas', path: '/admin/reservations', icon: Calendar });
-    navItems.splice(2, 0, { name: 'Usuarios', path: '/admin/users', icon: User });
+    navItems.splice(2, 0, { name: 'Áreas Comunes', path: '/admin/areas', icon: Building2 });
+    navItems.splice(3, 0, { name: 'Usuarios', path: '/admin/users', icon: User });
   }
 
   return (
