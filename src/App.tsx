@@ -5,10 +5,9 @@ import RegisterPage from './pages/Register';
 import ForgotPasswordPage from './pages/ForgotPassword';
 
 import DashboardLayout from './components/layout/DashboardLayout';
-import ResidentDashboard from './pages/Dashboard';
+import Calendario from './pages/Calendario';
 import NewReservationPage from './pages/NewReservation';
 import MyReservationsPage from './pages/MyReservations';
-import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminReservationsPage from './pages/admin/AdminReservations';
 import AdminAreasPage from './pages/admin/AdminAreas';
 import AdminUsersPage from './pages/admin/AdminUsers';
@@ -18,11 +17,11 @@ import PaymentMockPage from './pages/PaymentMock';
 
 const PrivateRoute = ({ children, adminOnly = false }: { children: React.ReactNode, adminOnly?: boolean }) => {
   const { profile, loading } = useAuth();
-  
+
   if (loading) return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
   if (!profile) return <Navigate to="/login" />;
   if (adminOnly && profile.role !== 'admin') return <Navigate to="/dashboard" />;
-  
+
   return <>{children}</>;
 };
 
@@ -35,107 +34,107 @@ function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
-          
-          <Route 
-            path="/dashboard" 
+
+          <Route
+            path="/dashboard"
             element={
               <PrivateRoute>
                 <DashboardLayout>
-                  <ResidentDashboard />
+                  <Calendario />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
-          <Route 
-            path="/reservations/new" 
+          <Route
+            path="/reservations/new"
             element={
               <PrivateRoute>
                 <DashboardLayout>
                   <NewReservationPage />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
-          <Route 
-            path="/reservations/my" 
+          <Route
+            path="/reservations/my"
             element={
               <PrivateRoute>
                 <DashboardLayout>
                   <MyReservationsPage />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
-          
-          <Route 
-            path="/admin" 
+
+          <Route
+            path="/admin"
             element={
               <PrivateRoute adminOnly>
                 <DashboardLayout>
-                  <AdminDashboard />
+                  <Calendario />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/reservations" 
+          <Route
+            path="/admin/reservations"
             element={
               <PrivateRoute adminOnly>
                 <DashboardLayout>
                   <AdminReservationsPage />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/areas" 
+          <Route
+            path="/admin/areas"
             element={
               <PrivateRoute adminOnly>
                 <DashboardLayout>
                   <AdminAreasPage />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
-          <Route 
-            path="/admin/users" 
+          <Route
+            path="/admin/users"
             element={
               <PrivateRoute adminOnly>
                 <DashboardLayout>
                   <AdminUsersPage />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
 
-          <Route 
-            path="/maintenance" 
+          <Route
+            path="/maintenance"
             element={
               <PrivateRoute>
                 <DashboardLayout>
                   <MaintenancePage />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
-          <Route 
-            path="/profile" 
+          <Route
+            path="/profile"
             element={
               <PrivateRoute>
                 <DashboardLayout>
                   <ProfilePage />
                 </DashboardLayout>
               </PrivateRoute>
-            } 
+            }
           />
 
-          <Route 
-            path="/payment/:id" 
+          <Route
+            path="/payment/:id"
             element={
               <PrivateRoute>
                 <PaymentMockPage />
               </PrivateRoute>
-            } 
+            }
           />
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>

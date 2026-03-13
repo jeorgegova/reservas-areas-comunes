@@ -5,13 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
-  User, 
-  Mail, 
-  Smartphone, 
-  MapPin, 
-  Save, 
-  Shield,
+import {
+  User,
   Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -39,7 +34,7 @@ export default function ProfilePage() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
-    
+
     setLoading(true);
     setMessage(null);
 
@@ -63,33 +58,31 @@ export default function ProfilePage() {
   if (!profile) return null;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Mi Perfil</h1>
-        <p className="text-muted-foreground mt-1">Gestiona tu información personal y de contacto.</p>
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Mi Perfil</h1>
+        <p className="text-gray-500 text-sm">Gestiona tu información personal y de contacto.</p>
       </div>
 
-      <Card className="border-none shadow-xl overflow-hidden">
-        <div className="h-32 bg-gradient-to-r from-primary/20 to-primary/5 flex items-end justify-center pb-6">
-           <div className="w-24 h-24 rounded-full bg-white shadow-lg border-4 border-white flex items-center justify-center text-primary relative translate-y-12">
-              <User className="w-12 h-12" />
-              <div className="absolute bottom-0 right-0 p-1 bg-green-500 rounded-full border-2 border-white" />
-           </div>
+      <Card className="border-none shadow-sm bg-white overflow-hidden">
+        <div className="h-24 bg-gray-50 flex items-center justify-center border-b border-gray-100">
+          <div className="w-16 h-16 rounded-xl bg-white shadow-sm border border-gray-100 flex items-center justify-center text-primary">
+            <User className="w-8 h-8" />
+          </div>
         </div>
-        
-        <CardHeader className="pt-16 text-center">
-          <CardTitle className="text-2xl font-bold">{profile.full_name}</CardTitle>
-          <CardDescription className="flex items-center justify-center gap-1.5 mt-1">
-            <Shield className="w-3.5 h-3.5" />
+
+        <CardHeader className="pt-4 text-center pb-2">
+          <CardTitle className="text-xl font-bold text-gray-900">{profile.full_name}</CardTitle>
+          <CardDescription className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
             Rol: {profile.role} • Residente de {profile.apartment || 'N/A'}
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-6 pt-2">
+        <CardContent className="space-y-6 p-6">
           {message && (
             <div className={cn(
-              "p-4 rounded-lg text-sm font-medium animate-in zoom-in-95 duration-200",
-              message.type === 'success' ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"
+              "p-3 rounded-lg text-xs font-bold flex items-center gap-2 border",
+              message.type === 'success' ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-700 border-red-100"
             )}>
               {message.text}
             </div>
@@ -97,75 +90,62 @@ export default function ProfilePage() {
 
           <form onSubmit={handleUpdate} className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Nombre Completo</Label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                  className="pl-10 h-12"
-                  value={formData.full_name}
-                  onChange={e => setFormData({...formData, full_name: e.target.value})}
-                  required
-                />
-              </div>
+              <Label className="text-[10px] uppercase font-bold text-gray-400">Nombre Completo</Label>
+              <Input
+                className="h-10 rounded-lg text-sm"
+                value={formData.full_name}
+                onChange={e => setFormData({ ...formData, full_name: e.target.value })}
+                required
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Correo Electrónico</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input 
-                    className="pl-10 h-12 bg-gray-50 opacity-70"
-                    value={profile.email}
-                    disabled
-                  />
-                </div>
+                <Label className="text-[10px] uppercase font-bold text-gray-400">Correo Electrónico</Label>
+                <Input
+                  className="h-10 rounded-lg text-sm bg-gray-50 text-gray-400 border-gray-100"
+                  value={profile.email}
+                  disabled
+                />
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Teléfono</Label>
-                <div className="relative">
-                  <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input 
-                    className="pl-10 h-12"
-                    value={formData.phone}
-                    onChange={e => setFormData({...formData, phone: e.target.value})}
-                    placeholder="Ej: 300 123 4567"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Apartamento / Torre</Label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                  className="pl-10 h-12"
-                  value={formData.apartment}
-                  onChange={e => setFormData({...formData, apartment: e.target.value})}
-                  placeholder="Ej: Torre 1 - Apto 101"
+                <Label className="text-[10px] uppercase font-bold text-gray-400">Teléfono</Label>
+                <Input
+                  className="h-10 rounded-lg text-sm"
+                  value={formData.phone}
+                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="300 123 4567"
                 />
               </div>
             </div>
 
-            <Button 
-              type="submit" 
-              className="w-full h-12 text-lg shadow-lg shadow-primary/20" 
-              disabled={loading}
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Save className="w-5 h-5 mr-2" />}
-              Guardar Cambios
-            </Button>
+            <div className="space-y-1.5">
+              <Label className="text-[10px] uppercase font-bold text-gray-400">Apartamento / Torre</Label>
+              <Input
+                className="h-10 rounded-lg text-sm"
+                value={formData.apartment}
+                onChange={e => setFormData({ ...formData, apartment: e.target.value })}
+                placeholder="Torre 1 - Apto 101"
+              />
+            </div>
+
+            <div className="pt-2">
+              <Button
+                type="submit"
+                className="w-full h-10 font-bold"
+                disabled={loading}
+              >
+                {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                Guardar Cambios
+              </Button>
+            </div>
           </form>
         </CardContent>
-        
-        <CardFooter className="bg-gray-50 p-6 flex items-center gap-3">
-          <div className="p-2 bg-white rounded-lg border">
-            <Shield className="w-5 h-5 text-primary" />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Tus datos están protegidos por la política de privacidad del conjunto residencial. Si necesitas cambiar tu rol, contacta a un administrador.
+
+        <CardFooter className="bg-gray-50/50 p-4 border-t border-gray-100">
+          <p className="text-[10px] text-gray-400 font-medium text-center w-full">
+            Tus datos están protegidos. Para cambiar de rol, contacta a la administración.
           </p>
         </CardFooter>
       </Card>

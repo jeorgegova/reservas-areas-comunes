@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  CreditCard, 
-  ShieldCheck, 
-  Lock, 
-  CheckCircle2, 
-  ArrowLeft,
+import {
+  CreditCard,
+  ShieldCheck,
+  Lock,
+  CheckCircle2,
   Loader2
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
@@ -34,7 +33,7 @@ export default function PaymentMockPage() {
       `)
       .eq('id', id)
       .single();
-    
+
     setReservation(data);
     setLoading(false);
   };
@@ -61,77 +60,73 @@ export default function PaymentMockPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full animate-in fade-in zoom-in-95 duration-500">
+      <div className="max-w-md w-full space-y-6">
         {!success ? (
-          <Card className="border-none shadow-2xl overflow-hidden">
-            <div className="bg-primary p-8 text-white text-center">
-              <div className="flex justify-center mb-4">
-                <div className="p-3 bg-white/20 rounded-full">
-                  <CreditCard className="w-10 h-10" />
+          <Card className="border-none shadow-sm">
+            <CardHeader className="p-6">
+              <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Pago Seguro</h2>
+              <p className="mt-2 text-sm text-gray-600">Procesa tu pago de forma segura</p>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center gap-4 mb-4">
+                <CreditCard className="w-8 h-8 text-primary" />
+                <div>
+                  <h3 className="font-semibold text-gray-900">{reservation.common_areas?.name}</h3>
+                  <p className="text-sm text-gray-500">Servicio reservado</p>
                 </div>
               </div>
-              <h2 className="text-2xl font-bold">Pasarela de Pagos</h2>
-              <p className="opacity-80">Seguro • Rápido • Confiable</p>
-            </div>
-            
-            <CardHeader>
-               <div className="flex justify-between items-center mb-2">
-                 <span className="text-sm text-muted-foreground font-semibold uppercase tracking-wider">Concepto</span>
-                 <span className="font-bold text-primary">{reservation.common_areas?.name}</span>
-               </div>
-               <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border">
-                 <div className="text-sm text-muted-foreground">Total a pagar</div>
-                 <div className="text-2xl font-black">{formatCurrency(reservation.total_cost)}</div>
-               </div>
-            </CardHeader>
 
-            <CardContent className="space-y-4">
               <div className="space-y-3">
-                 <div className="flex items-center gap-3 text-sm p-3 border rounded-lg bg-white">
-                   <ShieldCheck className="w-5 h-5 text-green-500" />
-                   <span>Transacción cifrada con SSL de 256 bits</span>
-                 </div>
-                 <div className="flex items-center gap-3 text-sm p-3 border rounded-lg bg-white">
-                   <Lock className="w-5 h-5 text-gray-400" />
-                   <span>No guardamos los datos de tus tarjetas</span>
-                 </div>
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span className="text-sm text-gray-600">Cifrado de grado militar activo</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Lock className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm text-gray-600">Privacidad total de datos</span>
+                </div>
               </div>
 
-              <div className="pt-4">
-                <p className="text-[10px] text-center text-muted-foreground uppercase font-bold mb-4 tracking-tighter">Este es un entorno de simulación</p>
-                <Button 
-                  className="w-full h-14 text-lg" 
-                  onClick={handlePayment}
-                  disabled={processing}
-                >
-                  {processing ? <Loader2 className="w-6 h-6 animate-spin mr-2" /> : "Pagar con mi Tarjeta / PSE"}
-                </Button>
+              <div className="mt-4">
+                <p className="mb-2 font-medium text-gray-700">Total a pagar</p>
+                <p className="text-3xl font-bold text-gray-900">{formatCurrency(reservation.total_cost)}</p>
               </div>
+
+              <Button
+                className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-12 rounded-xl shadow-md"
+                onClick={handlePayment}
+                disabled={processing}
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    PROCESANDO...
+                  </>
+                ) : "CONFIRMAR PAGO"}
+              </Button>
             </CardContent>
-
-            <CardFooter className="flex justify-center border-t py-4">
-               <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-                 <ArrowLeft className="w-4 h-4 mr-2" /> Volver atrás
-               </Button>
-            </CardFooter>
           </Card>
         ) : (
           <div className="text-center space-y-6">
-            <div className="flex justify-center">
-              <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center animate-bounce">
-                <CheckCircle2 className="w-16 h-16 text-green-600" />
-              </div>
+            <div className="flex items-center justify-center mb-6">
+              <CheckCircle2 className="w-12 h-12 text-emerald-500" />
             </div>
-            <div className="space-y-2">
-              <h2 className="text-3xl font-bold">¡Pago Exitoso!</h2>
-              <p className="text-muted-foreground">Tu pago por {formatCurrency(reservation.total_cost)} ha sido procesado.</p>
-            </div>
-            <div className="p-4 bg-white rounded-xl shadow-sm border space-y-2">
-               <p className="text-sm text-muted-foreground">La administración validará tu reserva en las próximas horas.</p>
-               <p className="text-xs font-mono text-gray-400">Ref: {reservation.id.substring(0, 16).toUpperCase()}</p>
-            </div>
-            <Button className="w-full h-12" onClick={() => navigate('/reservations/my')}>
-              Ver mis reservas
+            <h2 className="text-2xl font-bold text-gray-900">¡Éxito!</h2>
+            <p className="text-sm text-gray-600">Tu transacción ha sido validada</p>
+
+            <Card className="p-4 border-none shadow-sm">
+              <p className="mb-2 text-sm font-medium text-gray-700">Reserva Confirmada</p>
+              <p className="text-2xl font-bold text-gray-900">{formatCurrency(reservation.total_cost)}</p>
+              <p className="mt-2 text-xs text-gray-500 font-mono">
+                AUT-REF: {reservation.id.substring(0, 16).toUpperCase()}
+              </p>
+            </Card>
+
+            <Button
+              className="w-full mt-4 bg-primary hover:bg-primary/90 text-white font-bold h-12 rounded-xl shadow-md"
+              onClick={() => navigate('/reservations/my')}
+            >
+              VER MIS RESERVAS
             </Button>
           </div>
         )}

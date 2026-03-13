@@ -7,40 +7,65 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatCurrency, cn, detoxTime } from '@/lib/utils';
-import { 
-  Clock, 
-  AlertCircle, 
+import {
+  Clock,
+  AlertCircle,
   ArrowRight,
   ChevronLeft,
   Building2,
-  Hammer
+  Hammer,
+  ClipboardCheck
 } from 'lucide-react';
 import { format, addHours, parseISO } from 'date-fns';
 
 export default function NewReservationPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  
+  const isAdmin = profile?.role === 'admin';
+
   const [step, setStep] = useState(1);
   const [areas, setAreas] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [selectedArea, setSelectedArea] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [selectedStartTime, setSelectedStartTime] = useState<string>('');
   const [duration, setDuration] = useState<number>(1);
   const [existingReservations, setExistingReservations] = useState<any[]>([]);
   const [activeMaintenances, setActiveMaintenances] = useState<any[]>([]);
-  
+
+  // Para admins: seleccionar usuario para la reserva
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+
   const [loading, setLoading] = useState(false);
   const [blockingError, setBlockingError] = useState<string | null>(null);
 
   useEffect(() => {
     checkPendingReservations();
     fetchAreas();
-  }, []);
+    if (isAdmin) {
+      fetchUsers();
+    }
+  }, [profile]);
+
+  const fetchUsers = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, apartment')
+      .eq('role', 'user')
+      .order('full_name');
+
+    if (data) {
+      setUsers(data);
+      // Por defecto, seleccionar el primer usuario
+      if (data.length > 0) {
+        setSelectedUserId(data[0].id);
+      }
+    }
+  };
 
   const checkPendingReservations = async () => {
     if (!profile) return;
-    
+
     const { data } = await supabase
       .from('reservations')
       .select('id')
@@ -64,7 +89,7 @@ export default function NewReservationPage() {
       .select('start_datetime, end_datetime')
       .eq('common_area_id', areaId)
       .in('status', ['approved', 'pending_validation', 'pending_payment']);
-    
+
     setExistingReservations(resData || []);
 
     // Fetch maintenance notices for this area or general notices
@@ -123,17 +148,30 @@ export default function NewReservationPage() {
 
   const handleReserve = async () => {
     if (!profile || !selectedArea || !selectedStartTime) return;
-    
+
+    // Limpiar errores anteriores
+    setBlockingError(null);
+
     setLoading(true);
     const start = `${selectedDate}T${selectedStartTime}:00`;
     const end = format(addHours(parseISO(`${selectedDate}T${selectedStartTime}:00`), duration), "yyyy-MM-dd'T'HH:mm:ss");
     const totalCost = selectedArea.cost_per_hour * duration;
 
+    // Verificar que el usuario ha seleccionado un usuario
+    if (isAdmin && (!selectedUserId || selectedUserId.length === 0)) {
+      setBlockingError('Por favor selecciona un usuario para la reserva');
+      setLoading(false);
+      return;
+    }
+
+    // Para admins: usar el usuario seleccionado, para usuarios normales: usar su propio perfil
+    const reservationUserId = (isAdmin && selectedUserId && selectedUserId.length > 0) ? selectedUserId : profile.id;
+
     try {
       const { data, error } = await supabase
         .from('reservations')
         .insert({
-          user_id: profile.id,
+          user_id: reservationUserId,
           common_area_id: selectedArea.id,
           start_datetime: start,
           end_datetime: end,
@@ -144,7 +182,7 @@ export default function NewReservationPage() {
         .single();
 
       if (error) throw error;
-      
+
       // Redirect to specific payment mock page
       navigate(`/payment/${data.id}`);
     } catch (error: any) {
@@ -157,7 +195,7 @@ export default function NewReservationPage() {
   if (blockingError) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Card className="max-w-md border-none shadow-lg text-center p-8">
+        <Card className="border-none shadow-sm bg-white text-center p-8 max-w-md">
           <div className="flex justify-center mb-4">
             <div className="p-3 bg-destructive/10 rounded-full text-destructive">
               <AlertCircle className="w-12 h-12" />
@@ -176,19 +214,20 @@ export default function NewReservationPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Nueva Reserva</h1>
-          <p className="text-muted-foreground mt-1">Sigue los pasos para reservar un área común.</p>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Nueva Reserva</h1>
+          <p className="text-gray-500 text-sm">Sigue los pasos para asegurar tu espacio.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {[1, 2, 3].map((s) => (
-            <div 
+            <div
               key={s}
               className={cn(
-                "w-10 h-2 rounded-full transition-all duration-300",
-                step >= s ? "bg-primary" : "bg-gray-200"
+                "h-2.5 rounded-full transition-all duration-500",
+                step === s ? "w-12 bg-primary" :
+                  step > s ? "w-8 bg-emerald-500" : "w-8 bg-gray-200"
               )}
             />
           ))}
@@ -196,153 +235,188 @@ export default function NewReservationPage() {
       </div>
 
       {step === 1 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {areas.map(area => (
-            <Card 
-              key={area.id} 
-              className="overflow-hidden border-none shadow-md hover:shadow-xl transition-all cursor-pointer group"
-              onClick={() => handleAreaSelect(area)}
-            >
-              {area.image_url ? (
-                <img src={area.image_url} alt={area.name} className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-500" />
-              ) : (
-                <div className="w-full h-40 bg-primary/5 flex items-center justify-center">
-                  <Building2 className="w-12 h-12 text-primary/20" />
+        <>
+          {/* Selector de usuario para admin */}
+          {isAdmin && users.length > 0 && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                Reservar para usuario:
+              </Label>
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="w-full p-2 border border-gray-200 rounded-lg bg-white text-gray-900"
+              >
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.full_name || user.email} {user.apartment ? `- Apt ${user.apartment}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {areas.map((area) => (
+              <Card
+                key={area.id}
+                className="border-none shadow-sm bg-white hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
+                onClick={() => handleAreaSelect(area)}
+              >
+                <div className="relative h-40 overflow-hidden">
+                  {area.image_url ? (
+                    <img src={area.image_url} alt={area.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                      <Building2 className="w-12 h-12 text-gray-300" />
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 bg-primary px-3 py-1 rounded-full text-xs font-bold text-white">
+                    {formatCurrency(area.cost_per_hour)}/h
+                  </div>
                 </div>
-              )}
-              <CardHeader>
-                <CardTitle className="text-xl">{area.name}</CardTitle>
-                <CardDescription className="line-clamp-2">{area.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
-                  <span className="text-sm font-medium">Costo por hora</span>
-                  <span className="text-primary font-bold">{formatCurrency(area.cost_per_hour)}</span>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button className="w-full group-hover:translate-x-1 transition-transform">
-                  Seleccionar <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
+                <CardHeader className="p-4">
+                  <CardTitle className="text-lg font-bold text-gray-900">{area.name}</CardTitle>
+                  <CardDescription className="text-gray-500 text-sm line-clamp-2 mt-1">
+                    {area.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="px-4 pb-2">
+                  <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                    <Clock className="w-3 h-3" />
+                    <span>Máx. {area.max_hours_per_reservation}h por reserva</span>
+                  </div>
+                </CardContent>
+                <CardFooter className="p-4 pt-2">
+                  <Button className="w-full">
+                    Seleccionar
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
       {step === 2 && selectedArea && (
-        <Card className="border-none shadow-xl">
-          <CardHeader className="flex flex-row items-center gap-4">
+        <Card className="border-none shadow-sm bg-white overflow-hidden">
+          <CardHeader className="flex flex-row items-center gap-4 p-4 border-b">
             <Button variant="ghost" size="icon" onClick={() => setStep(1)}>
               <ChevronLeft className="w-5 h-5" />
             </Button>
             <div>
-              <CardTitle>Configurar horario: {selectedArea.name}</CardTitle>
-              <CardDescription>Selecciona la fecha y el bloque de tiempo.</CardDescription>
+              <CardTitle className="text-xl font-bold">{selectedArea.name}</CardTitle>
+              <CardDescription>Configura tu horario</CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <CardContent className="p-4 space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-4">
-                <Label className="text-base">Selecciona el día</Label>
-                <Input 
-                  type="date" 
-                  value={selectedDate} 
-                  min={format(new Date(), 'yyyy-MM-dd')}
-                  onChange={(e) => handleDateChange(e.target.value)}
-                  className="h-12 text-lg"
-                />
-                
-                <Label className="text-base block pt-4">Duración (máx. {selectedArea.max_hours_per_reservation}h)</Label>
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4].filter(h => h <= selectedArea.max_hours_per_reservation).map(h => (
-                    <Button
-                      key={h}
-                      variant={duration === h ? "default" : "outline"}
-                      className="flex-1 h-12 text-lg"
-                      onClick={() => setDuration(h)}
-                    >
-                      {h}h
-                    </Button>
-                  ))}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Fecha de la reserva</Label>
+                  <Input
+                    type="date"
+                    value={selectedDate}
+                    min={format(new Date(), 'yyyy-MM-dd')}
+                    onChange={(e) => handleDateChange(e.target.value)}
+                    className=""
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Duración (horas)</Label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4].filter(h => h <= selectedArea.max_hours_per_reservation).map(h => (
+                      <Button
+                        key={h}
+                        variant={duration === h ? "default" : "outline"}
+                        className="flex-1"
+                        onClick={() => setDuration(h)}
+                      >
+                        {h}h
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-primary/10 rounded-lg">
+                      <Clock className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Inversión total</p>
+                      <p className="text-xl font-bold">
+                        {formatCurrency(selectedArea.cost_per_hour * duration)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-4 relative z-20">
-                <Label className="text-base">Horas disponibles</Label>
-                <div className="grid grid-cols-3 gap-2 p-1">
+              <div className="space-y-4">
+                <Label className="text-sm font-medium text-gray-700">Horas disponibles</Label>
+                <div className="grid grid-cols-4 gap-3">
                   {timeSlots.map(time => {
                     const info = getSlotStatus(time);
                     const isOccupied = info.status !== 'available';
-                    
+
                     return (
-                      <div key={time} className="relative group hover:z-50">
+                      <div key={time} className="relative group">
                         <Button
-                          variant={selectedStartTime === time ? "default" : "outline"}
+                          variant="outline"
                           disabled={isOccupied}
                           onClick={() => setSelectedStartTime(time)}
                           className={cn(
-                            "w-full h-10 text-sm flex flex-col gap-0.5 relative overflow-hidden transition-all",
-                            info.status === 'reserved' && "opacity-40 cursor-not-allowed bg-gray-100",
-                            info.status === 'maintenance' && "opacity-80 cursor-not-allowed bg-gray-700 text-white border-none"
+                            "w-full h-12 text-sm font-medium rounded-lg transition-colors",
+                            selectedStartTime === time
+                              ? "bg-primary text-white border-primary hover:bg-primary/90"
+                              : "border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300",
+                            info.status === 'reserved' && "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed",
+                            info.status === 'maintenance' && "bg-red-50 text-red-400 border-red-200 cursor-not-allowed hover:bg-red-50 hover:border-red-200"
                           )}
                         >
-                          <span>{time}</span>
+                          {time}
                           {info.status === 'maintenance' && (
-                            <Hammer className="w-3 h-3 absolute bottom-1 right-1 opacity-50" />
+                            <Hammer className="w-3 h-3 ml-1.5" />
                           )}
                         </Button>
-                        
+
                         {isOccupied && (
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-gray-900 text-white text-[11px] rounded-lg shadow-2xl opacity-0 -translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-[100] w-48 text-center border border-white/10 backdrop-blur-md">
-                            <div className="font-bold border-b border-white/10 pb-1 mb-1 uppercase tracking-tighter text-[10px] text-gray-400">
-                              {info.status === 'maintenance' ? 'Mantenimiento' : 'Horario Ocupado'}
-                            </div>
-                            <div className="leading-tight">
-                              {info.status === 'maintenance' ? info.reason : 'Ya existe una reserva aprobada o en proceso para este horario.'}
-                            </div>
-                            {/* Arrow */}
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-8 border-transparent border-b-gray-900" />
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
+                            {info.status === 'maintenance' ? info.reason : 'Horario no disponible'}
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
                           </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
-                <div className="flex flex-wrap gap-4 pt-2 text-[10px] uppercase font-bold tracking-wider">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded-sm border" />
-                    <span className="text-muted-foreground">Disponible</span>
+                <div className="flex gap-4 pt-2 text-xs text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-white border border-gray-200" />
+                    <span>Disponible</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded-sm bg-gray-200" />
-                    <span className="text-muted-foreground">Reservado</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-gray-50 border border-gray-100" />
+                    <span>Ocupado</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded-sm bg-gray-700" />
-                    <span className="text-muted-foreground">Mantenimiento</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-red-50 border border-red-200" />
+                    <span>Mantenimiento</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="bg-primary/5 p-6 rounded-xl border border-primary/10 flex flex-col md:flex-row justify-between items-center gap-4">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-white rounded-lg shadow-sm">
-                  <Clock className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground uppercase tracking-wider font-semibold">Resumen de costos</p>
-                  <p className="text-2xl font-bold">{formatCurrency(selectedArea.cost_per_hour * duration)} <span className="text-sm font-normal text-muted-foreground">por {duration} hora(s)</span></p>
-                </div>
-              </div>
-              <Button 
-                size="lg" 
-                className="h-14 px-8 text-lg" 
+            <div className="pt-6 border-t border-gray-100">
+              <Button
+                size="lg"
+                className="w-full h-12 text-base font-medium bg-primary hover:bg-primary/90 text-white rounded-lg shadow-sm transition-colors"
                 disabled={!selectedStartTime}
                 onClick={() => setStep(3)}
               >
-                Continuar reserva
+                Continuar reserva <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </div>
           </CardContent>
@@ -350,44 +424,45 @@ export default function NewReservationPage() {
       )}
 
       {step === 3 && selectedArea && (
-        <Card className="border-none shadow-xl max-w-2xl mx-auto overflow-hidden">
-          <div className="h-2 bg-primary" />
-          <CardHeader>
-            <CardTitle className="text-2xl">Confirmación Final</CardTitle>
-            <CardDescription>Revisa los detalles antes de proceder al pago.</CardDescription>
+        <Card className="border-none shadow-sm bg-white overflow-hidden max-w-2xl mx-auto">
+          <CardHeader className="pb-4 text-center border-b">
+            <ClipboardCheck className="w-8 h-8 text-primary mx-auto mb-2" />
+            <CardTitle className="text-xl font-bold">Confirmación Final</CardTitle>
+            <CardDescription>Revisa los detalles antes del pago</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4 p-6 bg-gray-50 rounded-xl">
-              <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                <span className="text-muted-foreground">Área Común</span>
-                <span className="font-bold">{selectedArea.name}</span>
+          <CardContent className="py-4 space-y-4">
+            <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm text-gray-500">Espacio</span>
+                <span className="font-medium">{selectedArea.name}</span>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                <span className="text-muted-foreground">Fecha</span>
-                <span className="font-bold uppercase">{selectedDate}</span>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm text-gray-500">Fecha</span>
+                <span className="font-medium">{selectedDate}</span>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                <span className="text-muted-foreground">Horario</span>
-                <span className="font-bold">{selectedStartTime} - {format(addHours(new Date(`${selectedDate}T${selectedStartTime}:00`), duration), 'HH:mm')}</span>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm text-gray-500">Horario</span>
+                <span className="font-medium">{selectedStartTime} - {format(addHours(new Date(`${selectedDate}T${selectedStartTime}:00`), duration), 'HH:mm')}</span>
               </div>
-              <div className="flex justify-between items-center pt-4">
-                <span className="text-lg font-semibold">Total a pagar</span>
-                <span className="text-3xl font-extrabold text-primary">{formatCurrency(selectedArea.cost_per_hour * duration)}</span>
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-sm font-medium">Total a pagar</span>
+                <span className="text-lg font-bold text-primary">{formatCurrency(selectedArea.cost_per_hour * duration)}</span>
               </div>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-              <p className="text-sm text-amber-800">
-                Al confirmar, serás redirigido a la pasarela de pagos. Tu reserva quedará pendiente hasta que el pago sea validado.
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+              <p className="text-sm text-gray-600">
+                Al confirmar, se generará una solicitud pendiente de validación. Tienes 15 minutos para completar la transacción.
               </p>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
-            <Button className="w-full h-14 text-lg" onClick={handleReserve} disabled={loading}>
-              {loading ? "Procesando..." : "Confirmar y pagar ahora"}
+            <Button className="w-full" onClick={handleReserve} disabled={loading}>
+              {loading ? "Procesando..." : "Confirmar y proceder al pago"}
             </Button>
             <Button variant="ghost" className="w-full" onClick={() => setStep(2)}>
+              <ChevronLeft className="w-4 h-4 mr-2" />
               Modificar datos
             </Button>
           </CardFooter>

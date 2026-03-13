@@ -36,3 +36,11 @@ export function formatTime(date: string | Date) {
     hour12: false,
   }).format(d);
 }
+
+export function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+export function endOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}

@@ -12,9 +12,6 @@ import {
 import { format } from 'date-fns';
 import { 
   Search, 
-  Filter, 
-  CheckCircle, 
-  XCircle, 
   MoreHorizontal,
   Calendar,
   MapPin,
@@ -69,39 +66,32 @@ export default function AdminReservationsPage() {
     res.common_areas?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const statusColors: any = {
-    'approved': 'bg-green-100 text-green-800 border-green-200',
-    'pending_payment': 'bg-red-100 text-red-800 border-red-200',
-    'pending_validation': 'bg-amber-100 text-amber-800 border-amber-200',
-    'rejected': 'bg-gray-100 text-gray-800 border-gray-200',
-    'cancelled': 'bg-gray-100 text-gray-800 border-gray-200',
-  };
+
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gestión de Reservas</h1>
-          <p className="text-muted-foreground mt-1">Valida y gestiona todas las solicitudes del conjunto.</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Reservas</h1>
+          <p className="text-gray-500 text-sm">Valida y gestiona las solicitudes del conjunto.</p>
         </div>
       </div>
 
-      <Card className="border-none shadow-md overflow-hidden">
-        <CardHeader className="p-6 bg-white border-b">
+      <Card className="border-none shadow-sm bg-white overflow-hidden">
+        <CardHeader className="p-4 bg-gray-50/50 border-b border-gray-100">
           <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div className="relative w-full md:w-96">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input 
-                placeholder="Buscar por nombre, apto o área..." 
-                className="pl-10 h-11"
+                placeholder="Buscar por nombre, apto..." 
+                className="pl-10 h-9 rounded-lg text-sm"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <Filter className="w-4 h-4 text-muted-foreground" />
+            <div className="flex items-center gap-2 w-full md:w-auto">
               <select 
-                className="h-11 rounded-md border border-input bg-background px-3 py-2 text-sm w-full md:w-48 outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 font-medium w-full md:w-48 outline-none focus:ring-1 focus:ring-primary shadow-sm"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
@@ -118,81 +108,97 @@ export default function AdminReservationsPage() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 border-b text-gray-500 uppercase font-semibold text-[10px] tracking-wider">
-                <tr>
-                  <th className="px-6 py-4">Usuario / Apto</th>
-                  <th className="px-6 py-4">Área Común</th>
-                  <th className="px-6 py-4">Fecha / Hora</th>
-                  <th className="px-6 py-4">Costo</th>
-                  <th className="px-6 py-4">Estado</th>
-                  <th className="px-6 py-4 text-right">Acciones</th>
+              <thead>
+                <tr className="bg-gray-50/30 border-b border-gray-100">
+                  <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Usuario / Apto</th>
+                  <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Área</th>
+                  <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Fecha / Hora</th>
+                  <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Costo</th>
+                  <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Estado</th>
+                  <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-gray-50">
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      <td colSpan={6} className="px-6 py-8 bg-gray-50/50"></td>
+                      <td colSpan={6} className="px-6 py-4">
+                        <div className="h-4 bg-gray-100 rounded-full w-full" />
+                      </td>
                     </tr>
                   ))
                 ) : filteredReservations.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                      No se encontraron reservas con los filtros actuales.
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                       No se encontraron reservas.
                     </td>
                   </tr>
                 ) : (
                   filteredReservations.map((res) => (
-                    <tr key={res.id} className="hover:bg-gray-50 transition-colors group">
+                    <tr key={res.id} className="hover:bg-gray-50/50 transition-colors group">
                       <td className="px-6 py-4">
                         <div className="font-bold text-gray-900">{res.profiles?.full_name}</div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <MapPin className="w-3 h-3" />
-                          Apartamento {res.profiles?.apartment}
+                        <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-gray-300" />
+                          Apto {res.profiles?.apartment}
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-medium">{res.common_areas?.name}</td>
+                      <td className="px-6 py-4 text-gray-600 font-medium">{res.common_areas?.name}</td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                        <div className="flex items-center gap-1.5 text-gray-700">
+                          <Calendar className="w-3.5 h-3.5 text-gray-400" />
                           <span>{formatDate(res.start_datetime)}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
-                          <Clock className="w-3.5 h-3.5" />
+                        <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-gray-400 font-medium">
+                          <Clock className="w-3.5 h-3.5 text-gray-300" />
                           <span>{formatTime(res.start_datetime)} - {formatTime(res.end_datetime)}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-bold text-primary">{formatCurrency(res.total_cost)}</td>
                       <td className="px-6 py-4">
-                        <div className={cn(
-                          "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase tracking-wider",
-                          statusColors[res.status]
-                        )}>
-                          {res.status.replace('_', ' ')}
-                        </div>
+                        <span className="font-bold text-gray-900">{formatCurrency(res.total_cost)}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                         {(() => {
+                           const statusStyles: Record<string, string> = {
+                             'approved': 'bg-green-50 text-green-700 border-green-100',
+                             'pending_validation': 'bg-amber-50 text-amber-700 border-amber-100',
+                             'pending_payment': 'bg-red-50 text-red-700 border-red-100',
+                             'rejected': 'bg-gray-50 text-gray-600 border-gray-100',
+                             'cancelled': 'bg-gray-50 text-gray-400 border-gray-100',
+                           };
+                           const style = statusStyles[res.status] || 'bg-gray-50 text-gray-600 border-gray-100';
+                           return (
+                             <div className={cn(
+                               "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border uppercase",
+                               style
+                             )}>
+                               {res.status.replace('_', ' ')}
+                             </div>
+                           )
+                         })()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex justify-end gap-2">
                           {res.status === 'pending_validation' && (
                             <>
                               <Button 
                                 size="sm" 
-                                className="h-8 bg-green-600 hover:bg-green-700"
+                                className="h-7 px-3 bg-green-600 hover:bg-green-700 text-[10px]"
                                 onClick={() => handleUpdateStatus(res.id, 'approved')}
                               >
-                                <CheckCircle className="w-4 h-4 mr-1" /> Aprobar
+                                Aprobar
                               </Button>
                               <Button 
                                 size="sm" 
                                 variant="destructive" 
-                                className="h-8"
+                                className="h-7 px-3 text-[10px]"
                                 onClick={() => handleUpdateStatus(res.id, 'rejected')}
                               >
-                                <XCircle className="w-4 h-4 mr-1" /> Rechazar
+                                Rechazar
                               </Button>
                             </>
                           )}
-                          <Button size="sm" variant="outline" className="h-8 px-2">
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-primary">
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
                         </div>

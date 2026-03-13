@@ -4,12 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
-  Building2, 
-  Plus, 
-  Edit2, 
-  CheckCircle, 
-  XCircle
+import {
+  Plus,
+  Building2,
+  Edit2
 } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 
@@ -59,144 +57,152 @@ export default function AdminAreasPage() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gestión de Áreas Comunes</h1>
-          <p className="text-muted-foreground mt-1">Configura los espacios disponibles para reserva.</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Áreas Comunes</h1>
+          <p className="text-gray-500 text-sm">Configura los espacios disponibles para reserva.</p>
         </div>
         <Button onClick={() => {
           setCurrentArea({ name: '', description: '', max_hours_per_reservation: 4, cost_per_hour: 0, image_url: '', is_active: true });
           setIsEditing(true);
-        }}>
+        }} className="bg-primary hover:bg-primary/90 shadow-sm">
           <Plus className="w-4 h-4 mr-2" /> Nueva Área
         </Button>
       </div>
 
       {isEditing && (
-        <Card className="border-none shadow-xl bg-white animate-in slide-in-from-top duration-300">
-          <CardHeader>
-            <CardTitle>{currentArea.id ? 'Editar Área' : 'Crear Nueva Área'}</CardTitle>
-            <CardDescription>Completa los detalles del espacio.</CardDescription>
+        <Card className="border-none shadow-md bg-white overflow-hidden">
+          <CardHeader className="p-6 bg-gray-50/50">
+            <CardTitle className="text-lg font-bold text-gray-900">{currentArea.id ? 'Editar Área' : 'Crear Nueva Área'}</CardTitle>
+            <CardDescription className="text-xs">Completa los detalles del espacio</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6 space-y-6">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Nombre de la Área</Label>
-                    <Input 
-                      value={currentArea.name} 
-                      onChange={e => setCurrentArea({...currentArea, name: e.target.value})}
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] uppercase font-bold text-gray-400">Nombre</Label>
+                    <Input
+                      value={currentArea.name}
+                      onChange={e => setCurrentArea({ ...currentArea, name: e.target.value })}
                       placeholder="Ej: Salón Comunal"
                       required
+                      className="h-10 rounded-lg text-sm"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Descripción</Label>
-                    <Input 
-                      value={currentArea.description} 
-                      onChange={e => setCurrentArea({...currentArea, description: e.target.value})}
-                      placeholder="Breve descripción del espacio"
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] uppercase font-bold text-gray-400">Descripción</Label>
+                    <Input
+                      value={currentArea.description}
+                      onChange={e => setCurrentArea({ ...currentArea, description: e.target.value })}
+                      placeholder="Breve descripción"
+                      className="h-10 rounded-lg text-sm"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>URL de Imagen</Label>
-                    <Input 
-                      value={currentArea.image_url} 
-                      onChange={e => setCurrentArea({...currentArea, image_url: e.target.value})}
-                      placeholder="https://ejemplo.com/imagen.jpg"
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] uppercase font-bold text-gray-400">URL Imagen</Label>
+                    <Input
+                      value={currentArea.image_url}
+                      onChange={e => setCurrentArea({ ...currentArea, image_url: e.target.value })}
+                      placeholder="https://..."
+                      className="h-10 rounded-lg text-sm"
                     />
                   </div>
                 </div>
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Horas Máximas por Reserva</Label>
-                    <Input 
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] uppercase font-bold text-gray-400">Máx. Horas</Label>
+                    <Input
                       type="number"
-                      value={currentArea.max_hours_per_reservation} 
-                      onChange={e => setCurrentArea({...currentArea, max_hours_per_reservation: parseInt(e.target.value)})}
+                      value={currentArea.max_hours_per_reservation}
+                      onChange={e => setCurrentArea({ ...currentArea, max_hours_per_reservation: parseInt(e.target.value) })}
                       required
+                      className="h-10 rounded-lg text-sm"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Costo por Hora (COP)</Label>
-                    <Input 
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Hora (COP)</Label>
+                    <Input
                       type="number"
-                      value={currentArea.cost_per_hour} 
-                      onChange={e => setCurrentArea({...currentArea, cost_per_hour: parseFloat(e.target.value)})}
+                      value={currentArea.cost_per_hour}
+                      onChange={e => setCurrentArea({ ...currentArea, cost_per_hour: parseFloat(e.target.value) })}
                       required
+                      className="h-10 rounded-lg text-sm"
                     />
                   </div>
-                  <div className="flex items-center gap-2 pt-8">
-                     <input 
-                       type="checkbox" 
-                       id="active"
-                       checked={currentArea.is_active}
-                       onChange={e => setCurrentArea({...currentArea, is_active: e.target.checked})}
-                       className="w-4 h-4 text-primary rounded"
-                     />
-                     <Label htmlFor="active">Espacio activo y visible</Label>
+                  <div className="flex items-center gap-3 pt-4">
+                    <input
+                      type="checkbox"
+                      id="active"
+                      checked={currentArea.is_active}
+                      onChange={e => setCurrentArea({ ...currentArea, is_active: e.target.checked })}
+                      className="w-4 h-4 text-primary rounded border-gray-300"
+                    />
+                    <Label htmlFor="active" className="text-sm text-gray-600 cursor-pointer">Espacio activo</Label>
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="ghost" onClick={() => setIsEditing(false)}>Cancelar</Button>
-                <Button type="submit">Guardar Cambios</Button>
+              <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+                <Button type="button" variant="ghost" onClick={() => setIsEditing(false)} className="h-10 px-6 font-bold text-gray-400">Cancelar</Button>
+                <Button type="submit" className="h-10 px-6 font-bold">Guardar</Button>
               </div>
             </form>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading ? (
           [1, 2, 3].map(i => <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />)
         ) : (
-          areas.map(area => (
-            <Card key={area.id} className={cn(
-              "overflow-hidden border-none shadow-md transition-all",
-              !area.is_active && "opacity-60 grayscale"
-            )}>
-              <div className="h-40 bg-gray-100 relative group">
+          areas.map((area) => (
+            <Card key={area.id}
+              className={cn(
+                "overflow-hidden border-none shadow-sm bg-white transition-all hover:shadow-md",
+                !area.is_active && "opacity-60 grayscale"
+              )}
+            >
+              <div className="h-40 relative overflow-hidden group">
                 {area.image_url ? (
-                  <img src={area.image_url} alt={area.name} className="w-full h-full object-cover" />
+                  <img src={area.image_url} alt={area.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-primary/20">
+                  <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-300">
                     <Building2 className="w-12 h-12" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <Button size="sm" onClick={() => handleEdit(area)}>
-                    <Edit2 className="w-4 h-4 mr-1" /> Editar
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                  <Button size="sm" onClick={() => handleEdit(area)} className="bg-white text-gray-900 hover:bg-gray-100">
+                    <Edit2 className="w-3.5 h-3.5 mr-2" /> Editar
                   </Button>
                   <Button size="sm" variant={area.is_active ? "destructive" : "default"} onClick={() => handleToggleActive(area)}>
-                    {area.is_active ? <XCircle className="w-4 h-4 mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
                     {area.is_active ? 'Desactivar' : 'Activar'}
                   </Button>
                 </div>
               </div>
-              <CardHeader className="p-5 pb-2">
+              <CardHeader className="p-4 pb-2">
                 <div className="flex justify-between items-start">
-                  <CardTitle className="text-xl">{area.name}</CardTitle>
+                  <h3 className="font-bold text-gray-900 truncate pr-2">{area.name}</h3>
                   <div className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border",
-                    area.is_active ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-600 border-gray-200"
+                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border",
+                    area.is_active ? "bg-green-50 text-green-700 border-green-100" : "bg-gray-50 text-gray-400 border-gray-200"
                   )}>
                     {area.is_active ? 'Activo' : 'Inactivo'}
                   </div>
                 </div>
-                <CardDescription className="line-clamp-1">{area.description}</CardDescription>
               </CardHeader>
-              <CardContent className="p-5 pt-0 space-y-4">
-                 <div className="flex justify-between text-sm py-2 border-b">
-                   <span className="text-muted-foreground">Costo/Hora</span>
-                   <span className="font-bold">{formatCurrency(area.cost_per_hour)}</span>
-                 </div>
-                 <div className="flex justify-between text-sm py-2 border-b">
-                   <span className="text-muted-foreground">Máx. Horas</span>
-                   <span className="font-bold">{area.max_hours_per_reservation}h</span>
-                 </div>
+              <CardContent className="p-4 pt-1 space-y-3">
+                <p className="text-xs text-gray-500 line-clamp-1">{area.description}</p>
+                <div className="pt-2 flex justify-between items-center text-xs border-t border-gray-50">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-400 uppercase">Costo Hora</span>
+                    <span className="font-bold text-gray-900">{formatCurrency(area.cost_per_hour)}</span>
+                  </div>
+                  <div className="flex flex-col text-right">
+                    <span className="text-[10px] text-gray-400 uppercase">Máximo</span>
+                    <span className="font-bold text-gray-600">{area.max_hours_per_reservation}h</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ))
