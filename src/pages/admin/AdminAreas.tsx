@@ -7,7 +7,11 @@ import { Label } from '@/components/ui/label';
 import {
   Plus,
   Building2,
-  Edit2
+  Edit2,
+  Clock,
+  Sun,
+  Moon,
+  Calendar
 } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 
@@ -20,6 +24,12 @@ export default function AdminAreasPage() {
     description: '',
     max_hours_per_reservation: 4,
     cost_per_hour: 0,
+    pricing_type: 'hourly',
+    cost_jornada_diurna: 0,
+    cost_jornada_nocturna: 0,
+    cost_jornada_ambos: 0,
+    jornada_hours_diurna: 10,
+    jornada_hours_nocturna: 6,
     image_url: '',
     is_active: true
   });
@@ -64,7 +74,12 @@ export default function AdminAreasPage() {
           <p className="text-gray-500 text-sm">Configura los espacios disponibles para reserva.</p>
         </div>
         <Button onClick={() => {
-          setCurrentArea({ name: '', description: '', max_hours_per_reservation: 4, cost_per_hour: 0, image_url: '', is_active: true });
+          setCurrentArea({
+            name: '', description: '', max_hours_per_reservation: 4, cost_per_hour: 0,
+            pricing_type: 'hourly', cost_jornada_diurna: 0, cost_jornada_nocturna: 0,
+            cost_jornada_ambos: 0, jornada_hours_diurna: 10, jornada_hours_nocturna: 6,
+            image_url: '', is_active: true
+          });
           setIsEditing(true);
         }} className="bg-primary hover:bg-primary/90 shadow-sm">
           <Plus className="w-4 h-4 mr-2" /> Nueva Área
@@ -112,25 +127,95 @@ export default function AdminAreasPage() {
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase font-bold text-gray-400">Máx. Horas</Label>
-                    <Input
-                      type="number"
-                      value={currentArea.max_hours_per_reservation}
-                      onChange={e => setCurrentArea({ ...currentArea, max_hours_per_reservation: parseInt(e.target.value) })}
-                      required
-                      className="h-10 rounded-lg text-sm"
-                    />
+                    <Label className="text-[10px] uppercase font-bold text-gray-400">Tipo de Precio</Label>
+                    <select
+                      value={currentArea.pricing_type}
+                      onChange={e => setCurrentArea({ ...currentArea, pricing_type: e.target.value })}
+                      className="w-full h-10 rounded-lg text-sm border border-gray-200 bg-white px-3"
+                    >
+                      <option value="hourly">Por Hora</option>
+                      <option value="jornada">Por Jornada (Día/Noche)</option>
+                    </select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Hora (COP)</Label>
-                    <Input
-                      type="number"
-                      value={currentArea.cost_per_hour}
-                      onChange={e => setCurrentArea({ ...currentArea, cost_per_hour: parseFloat(e.target.value) })}
-                      required
-                      className="h-10 rounded-lg text-sm"
-                    />
-                  </div>
+
+                  {currentArea.pricing_type === 'hourly' ? (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase font-bold text-gray-400">Máx. Horas</Label>
+                        <Input
+                          type="number"
+                          value={currentArea.max_hours_per_reservation}
+                          onChange={e => setCurrentArea({ ...currentArea, max_hours_per_reservation: parseInt(e.target.value) })}
+                          required
+                          className="h-10 rounded-lg text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Hora (COP)</Label>
+                        <Input
+                          type="number"
+                          value={currentArea.cost_per_hour}
+                          onChange={e => setCurrentArea({ ...currentArea, cost_per_hour: parseFloat(e.target.value) })}
+                          required
+                          className="h-10 rounded-lg text-sm"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-4 bg-amber-50 border border-amber-100 rounded-lg space-y-3">
+                        <div className="flex items-center gap-2 text-amber-700">
+                          <Sun className="w-4 h-4" />
+                          <span className="text-xs font-bold uppercase">Jornada Diurna (8am - 6pm)</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Diurna</Label>
+                          <Input
+                            type="number"
+                            value={currentArea.cost_jornada_diurna}
+                            onChange={e => setCurrentArea({ ...currentArea, cost_jornada_diurna: parseFloat(e.target.value) })}
+                            className="h-10 rounded-lg text-sm"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-lg space-y-3">
+                        <div className="flex items-center gap-2 text-indigo-700">
+                          <Moon className="w-4 h-4" />
+                          <span className="text-xs font-bold uppercase">Jornada Nocturna (6pm - 12am)</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Nocturna</Label>
+                          <Input
+                            type="number"
+                            value={currentArea.cost_jornada_nocturna}
+                            onChange={e => setCurrentArea({ ...currentArea, cost_jornada_nocturna: parseFloat(e.target.value) })}
+                            className="h-10 rounded-lg text-sm"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-green-50 border border-green-100 rounded-lg space-y-3">
+                        <div className="flex items-center gap-2 text-green-700">
+                          <Calendar className="w-4 h-4" />
+                          <span className="text-xs font-bold uppercase">Día Completo (Diurna + Nocturna)</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Completo</Label>
+                          <Input
+                            type="number"
+                            value={currentArea.cost_jornada_ambos}
+                            onChange={e => setCurrentArea({ ...currentArea, cost_jornada_ambos: parseFloat(e.target.value) })}
+                            className="h-10 rounded-lg text-sm"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
                   <div className="flex items-center gap-3 pt-4">
                     <input
                       type="checkbox"
@@ -194,14 +279,33 @@ export default function AdminAreasPage() {
               <CardContent className="p-4 pt-1 space-y-3">
                 <p className="text-xs text-gray-500 line-clamp-1">{area.description}</p>
                 <div className="pt-2 flex justify-between items-center text-xs border-t border-gray-50">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-gray-400 uppercase">Costo Hora</span>
-                    <span className="font-bold text-gray-900">{formatCurrency(area.cost_per_hour)}</span>
-                  </div>
-                  <div className="flex flex-col text-right">
-                    <span className="text-[10px] text-gray-400 uppercase">Máximo</span>
-                    <span className="font-bold text-gray-600">{area.max_hours_per_reservation}h</span>
-                  </div>
+                  {area.pricing_type === 'jornada' ? (
+                    <div className="flex flex-col w-full">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] text-gray-400 uppercase">Diurna</span>
+                        <span className="font-bold text-amber-600">{formatCurrency(area.cost_jornada_diurna)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] text-gray-400 uppercase">Nocturna</span>
+                        <span className="font-bold text-indigo-600">{formatCurrency(area.cost_jornada_nocturna)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-gray-400 uppercase">Completo</span>
+                        <span className="font-bold text-green-600">{formatCurrency(area.cost_jornada_ambos)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-gray-400 uppercase">Costo Hora</span>
+                        <span className="font-bold text-gray-900">{formatCurrency(area.cost_per_hour)}</span>
+                      </div>
+                      <div className="flex flex-col text-right">
+                        <span className="text-[10px] text-gray-400 uppercase">Máximo</span>
+                        <span className="font-bold text-gray-600">{area.max_hours_per_reservation}h</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>

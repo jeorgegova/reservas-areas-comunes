@@ -14,7 +14,10 @@ import {
   ChevronLeft,
   Building2,
   Hammer,
-  ClipboardCheck
+  ClipboardCheck,
+  Sun,
+  Moon,
+  Calendar
 } from 'lucide-react';
 import { format, addHours, parseISO } from 'date-fns';
 
@@ -30,6 +33,8 @@ export default function NewReservationPage() {
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [selectedStartTime, setSelectedStartTime] = useState<string>('');
   const [duration, setDuration] = useState<number>(1);
+  // Tipo de jornada seleccionada: 'diurna' | 'nocturna' | 'ambos' | null
+  const [selectedJornada, setSelectedJornada] = useState<'diurna' | 'nocturna' | 'ambos' | null>(null);
   const [existingReservations, setExistingReservations] = useState<any[]>([]);
   const [activeMaintenances, setActiveMaintenances] = useState<any[]>([]);
 
@@ -104,6 +109,7 @@ export default function NewReservationPage() {
 
   const handleAreaSelect = (area: any) => {
     setSelectedArea(area);
+    setSelectedJornada(null); // Reset jornada selection
     setStep(2);
     fetchBusySlots(area.id);
   };
@@ -146,16 +152,56 @@ export default function NewReservationPage() {
     return { status: 'available' };
   };
 
+  // Calcular el costo total según el tipo de precio
+  const calculateTotalCost = () => {
+    if (!selectedArea) return 0;
+
+    if (selectedArea.pricing_type === 'jornada') {
+      if (selectedJornada === 'diurna') return selectedArea.cost_jornada_diurna || 0;
+      if (selectedJornada === 'nocturna') return selectedArea.cost_jornada_nocturna || 0;
+      if (selectedJornada === 'ambos') return selectedArea.cost_jornada_ambos || 0;
+      return 0;
+    }
+    return selectedArea.cost_per_hour * duration;
+  };
+
+  // Obtener las horas de la jornada seleccionada
+  const getJornadaHours = () => {
+    if (!selectedArea) return 0;
+    if (selectedJornada === 'diurna') return selectedArea.jornada_hours_diurna || 10;
+    if (selectedJornada === 'nocturna') return selectedArea.jornada_hours_nocturna || 6;
+    if (selectedJornada === 'ambos') return (selectedArea.jornada_hours_diurna || 10) + (selectedArea.jornada_hours_nocturna || 6);
+    return 0;
+  };
+
+  // Determinar la hora de fin según el tipo de precio
+  const getEndTime = () => {
+    if (!selectedArea || !selectedStartTime) return '';
+
+    if (selectedArea.pricing_type === 'jornada') {
+      const hours = getJornadaHours();
+      return format(addHours(parseISO(`${selectedDate}T${selectedStartTime}:00`), hours), "yyyy-MM-dd'T'HH:mm:ss");
+    }
+    return format(addHours(parseISO(`${selectedDate}T${selectedStartTime}:00`), duration), "yyyy-MM-dd'T'HH:mm:ss");
+  };
+
   const handleReserve = async () => {
     if (!profile || !selectedArea || !selectedStartTime) return;
+
+    // Para áreas por jornada, validar que se haya seleccionado una jornada
+    if (selectedArea.pricing_type === 'jornada' && !selectedJornada) {
+      setBlockingError('Por favor selecciona una jornada (diurna, nocturna o completo)');
+      setLoading(false);
+      return;
+    }
 
     // Limpiar errores anteriores
     setBlockingError(null);
 
     setLoading(true);
     const start = `${selectedDate}T${selectedStartTime}:00`;
-    const end = format(addHours(parseISO(`${selectedDate}T${selectedStartTime}:00`), duration), "yyyy-MM-dd'T'HH:mm:ss");
-    const totalCost = selectedArea.cost_per_hour * duration;
+    const end = getEndTime();
+    const totalCost = calculateTotalCost();
 
     // Verificar que el usuario ha seleccionado un usuario
     if (isAdmin && (!selectedUserId || selectedUserId.length === 0)) {
@@ -272,7 +318,9 @@ export default function NewReservationPage() {
                     </div>
                   )}
                   <div className="absolute top-2 right-2 bg-primary px-3 py-1 rounded-full text-xs font-bold text-white">
-                    {formatCurrency(area.cost_per_hour)}/h
+                    {area.pricing_type === 'jornada'
+                      ? 'Por Jornada'
+                      : `${formatCurrency(area.cost_per_hour)}/h`}
                   </div>
                 </div>
                 <CardHeader className="p-4">
@@ -283,8 +331,17 @@ export default function NewReservationPage() {
                 </CardHeader>
                 <CardContent className="px-4 pb-2">
                   <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 p-2 rounded">
-                    <Clock className="w-3 h-3" />
-                    <span>Máx. {area.max_hours_per_reservation}h por reserva</span>
+                    {area.pricing_type === 'jornada' ? (
+                      <>
+                        <Calendar className="w-3 h-3" />
+                        <span>Jornada Completa</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-3 h-3" />
+                        <span>Máx. {area.max_hours_per_reservation}h por reserva</span>
+                      </>
+                    )}
                   </div>
                 </CardContent>
                 <CardFooter className="p-4 pt-2">
@@ -324,30 +381,97 @@ export default function NewReservationPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Duración (horas)</Label>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4].filter(h => h <= selectedArea.max_hours_per_reservation).map(h => (
-                      <Button
-                        key={h}
-                        variant={duration === h ? "default" : "outline"}
-                        className="flex-1"
-                        onClick={() => setDuration(h)}
-                      >
-                        {h}h
-                      </Button>
-                    ))}
-                  </div>
+                  {selectedArea.pricing_type === 'jornada' ? (
+                    <>
+                      <Label className="text-sm font-medium">Seleccionar Jornada</Label>
+                      <div className="grid grid-cols-1 gap-2">
+                        <Button
+                          variant={selectedJornada === 'diurna' ? "default" : "outline"}
+                          className={cn(
+                            "w-full h-14 justify-start gap-3",
+                            selectedJornada === 'diurna' && "bg-amber-500 hover:bg-amber-600 border-amber-500"
+                          )}
+                          onClick={() => setSelectedJornada('diurna')}
+                        >
+                          <Sun className="w-5 h-5" />
+                          <div className="text-left">
+                            <div className="font-medium">Diurna</div>
+                            <div className="text-xs opacity-80">8:00 AM - 6:00 PM</div>
+                          </div>
+                          <div className="ml-auto font-bold">
+                            {formatCurrency(selectedArea.cost_jornada_diurna || 0)}
+                          </div>
+                        </Button>
+
+                        <Button
+                          variant={selectedJornada === 'nocturna' ? "default" : "outline"}
+                          className={cn(
+                            "w-full h-14 justify-start gap-3",
+                            selectedJornada === 'nocturna' && "bg-indigo-500 hover:bg-indigo-600 border-indigo-500"
+                          )}
+                          onClick={() => setSelectedJornada('nocturna')}
+                        >
+                          <Moon className="w-5 h-5" />
+                          <div className="text-left">
+                            <div className="font-medium">Nocturna</div>
+                            <div className="text-xs opacity-80">6:00 PM - 12:00 AM</div>
+                          </div>
+                          <div className="ml-auto font-bold">
+                            {formatCurrency(selectedArea.cost_jornada_nocturna || 0)}
+                          </div>
+                        </Button>
+
+                        <Button
+                          variant={selectedJornada === 'ambos' ? "default" : "outline"}
+                          className={cn(
+                            "w-full h-14 justify-start gap-3",
+                            selectedJornada === 'ambos' && "bg-green-500 hover:bg-green-600 border-green-500"
+                          )}
+                          onClick={() => setSelectedJornada('ambos')}
+                        >
+                          <Calendar className="w-5 h-5" />
+                          <div className="text-left">
+                            <div className="font-medium">Completo</div>
+                            <div className="text-xs opacity-80">Día completo</div>
+                          </div>
+                          <div className="ml-auto font-bold">
+                            {formatCurrency(selectedArea.cost_jornada_ambos || 0)}
+                          </div>
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Label className="text-sm font-medium">Duración (horas)</Label>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4].filter(h => h <= selectedArea.max_hours_per_reservation).map(h => (
+                          <Button
+                            key={h}
+                            variant={duration === h ? "default" : "outline"}
+                            className="flex-1"
+                            onClick={() => setDuration(h)}
+                          >
+                            {h}h
+                          </Button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <div className="flex items-center gap-4">
                     <div className="p-3 bg-primary/10 rounded-lg">
-                      <Clock className="w-5 h-5 text-primary" />
+                      {selectedArea.pricing_type === 'jornada' ? (
+                        <Calendar className="w-5 h-5 text-primary" />
+                      ) : (
+                        <Clock className="w-5 h-5 text-primary" />
+                      )}
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Inversión total</p>
                       <p className="text-xl font-bold">
-                        {formatCurrency(selectedArea.cost_per_hour * duration)}
+                        {formatCurrency(calculateTotalCost())}
                       </p>
                     </div>
                   </div>
@@ -413,7 +537,7 @@ export default function NewReservationPage() {
               <Button
                 size="lg"
                 className="w-full h-12 text-base font-medium bg-primary hover:bg-primary/90 text-white rounded-lg shadow-sm transition-colors"
-                disabled={!selectedStartTime}
+                disabled={!selectedStartTime || (selectedArea.pricing_type === 'jornada' && !selectedJornada)}
                 onClick={() => setStep(3)}
               >
                 Continuar reserva <ArrowRight className="w-5 h-5 ml-2" />
@@ -441,12 +565,26 @@ export default function NewReservationPage() {
                 <span className="font-medium">{selectedDate}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b">
-                <span className="text-sm text-gray-500">Horario</span>
-                <span className="font-medium">{selectedStartTime} - {format(addHours(new Date(`${selectedDate}T${selectedStartTime}:00`), duration), 'HH:mm')}</span>
+                <span className="text-sm text-gray-500">
+                  {selectedArea.pricing_type === 'jornada' ? 'Jornada' : 'Horario'}
+                </span>
+                <span className="font-medium">
+                  {selectedArea.pricing_type === 'jornada'
+                    ? selectedJornada === 'diurna' ? 'Diurna (8am - 6pm)'
+                      : selectedJornada === 'nocturna' ? 'Nocturna (6pm - 12am)'
+                        : selectedJornada === 'ambos' ? 'Completo (Día completo)'
+                          : ''
+                    : `${selectedStartTime} - ${format(addHours(new Date(`${selectedDate}T${selectedStartTime}:00`), duration), 'HH:mm')}`
+                  }
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-sm text-gray-500">Hora de entrada</span>
+                <span className="font-medium">{selectedStartTime}</span>
               </div>
               <div className="flex justify-between items-center pt-2">
                 <span className="text-sm font-medium">Total a pagar</span>
-                <span className="text-lg font-bold text-primary">{formatCurrency(selectedArea.cost_per_hour * duration)}</span>
+                <span className="text-lg font-bold text-primary">{formatCurrency(calculateTotalCost())}</span>
               </div>
             </div>
 

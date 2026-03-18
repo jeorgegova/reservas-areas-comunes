@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { HabeasData } from '@/components/ui/habeas-data';
 import { UserPlus } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -13,6 +14,7 @@ export default function RegisterPage() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [apartment, setApartment] = useState('');
+  const [habeasDataAccepted, setHabeasDataAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -21,6 +23,13 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    // Validar que acepte el tratamiento de datos
+    if (!habeasDataAccepted) {
+      setError('Debe aceptar el tratamiento de datos personales para continuar');
+      setLoading(false);
+      return;
+    }
 
     try {
       const { error } = await supabase.auth.signUp({
@@ -31,6 +40,8 @@ export default function RegisterPage() {
             full_name: fullName,
             phone: phone,
             apartment: apartment,
+            habeas_data_accepted: true,
+            habeas_data_accepted_at: new Date().toISOString(),
           },
         },
       });
@@ -155,6 +166,12 @@ export default function RegisterPage() {
                 className="bg-white/10 border-white/20 text-white placeholder:text-white/40 h-11 rounded-xl focus:ring-primary/50 focus:border-primary/50 transition-all duration-300"
               />
             </div>
+
+            {/* Habeas Data - Tratamiento de Datos Personales */}
+            <HabeasData 
+              accepted={habeasDataAccepted} 
+              onAccept={setHabeasDataAccepted} 
+            />
 
             <Button 
               type="submit" 

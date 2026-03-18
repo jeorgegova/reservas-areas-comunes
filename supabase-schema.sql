@@ -24,6 +24,15 @@ CREATE TABLE common_areas (
   description TEXT,
   max_hours_per_reservation INTEGER DEFAULT 4,
   cost_per_hour NUMERIC DEFAULT 0,
+  -- Tipo de precio: 'hourly' = por hora, 'jornada' = por jornada
+  pricing_type TEXT DEFAULT 'hourly' CHECK (pricing_type IN ('hourly', 'jornada')),
+  -- Costos por jornada
+  cost_jornada_diurna NUMERIC DEFAULT 0,
+  cost_jornada_nocturna NUMERIC DEFAULT 0,
+  cost_jornada_ambos NUMERIC DEFAULT 0,
+  -- Horas de cada jornada (para cálculos)
+  jornada_hours_diurna INTEGER DEFAULT 10,
+  jornada_hours_nocturna INTEGER DEFAULT 6,
   image_url TEXT,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT NOW()
