@@ -8,12 +8,61 @@ import {
   Plus,
   Building2,
   Edit2,
-  Clock,
   Sun,
   Moon,
-  Calendar
+  Calendar,
+  Settings
 } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+
+// Componente de input con formato de moneda
+function CurrencyInput({ value, onChange, className, placeholder }: { value: number; onChange: (val: number) => void; className?: string; placeholder?: string }) {
+  const [displayValue, setDisplayValue] = useState('');
+
+  // Formatear número con separador de miles
+  const formatNumber = (num: number) => {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  };
+
+  useEffect(() => {
+    if (value) {
+      setDisplayValue(formatNumber(value));
+    } else {
+      setDisplayValue('');
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Eliminar puntos y cualquier caracter que no sea número
+    const rawValue = e.target.value.replace(/[^0-9]/g, '');
+    // Guardar el valor sin formato para el servidor
+    const numValue = rawValue ? parseInt(rawValue, 10) : 0;
+    onChange(numValue);
+    // Mostrar con formato de miles
+    setDisplayValue(rawValue ? formatNumber(parseInt(rawValue, 10)) : '');
+  };
+
+  const handleFocus = () => {
+    // Al hacer focus, mostrar sin formato para facilitar edición
+    if (value) {
+      setDisplayValue(value.toString());
+    }
+  };
+
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+      <Input
+        type="text"
+        value={displayValue}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        className={cn("pl-6", className)}
+        placeholder={placeholder || "0"}
+      />
+    </div>
+  );
+}
 
 export default function AdminAreasPage() {
   const [areas, setAreas] = useState<any[]>([]);
@@ -30,6 +79,10 @@ export default function AdminAreasPage() {
     cost_jornada_ambos: 0,
     jornada_hours_diurna: 10,
     jornada_hours_nocturna: 6,
+    jornada_start_diurna: '08:00',
+    jornada_end_diurna: '18:00',
+    jornada_start_nocturna: '18:00',
+    jornada_end_nocturna: '23:59',
     image_url: '',
     is_active: true
   });
@@ -68,30 +121,41 @@ export default function AdminAreasPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Áreas Comunes</h1>
-          <p className="text-gray-500 text-sm">Configura los espacios disponibles para reserva.</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-primary rounded-xl shadow-lg shadow-primary/20">
+            <Settings className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Áreas Comunes</h1>
+            <p className="text-gray-500 text-sm">Configura los espacios disponibles para reserva.</p>
+          </div>
         </div>
-        <Button onClick={() => {
-          setCurrentArea({
-            name: '', description: '', max_hours_per_reservation: 4, cost_per_hour: 0,
-            pricing_type: 'hourly', cost_jornada_diurna: 0, cost_jornada_nocturna: 0,
-            cost_jornada_ambos: 0, jornada_hours_diurna: 10, jornada_hours_nocturna: 6,
-            image_url: '', is_active: true
-          });
-          setIsEditing(true);
-        }} className="bg-primary hover:bg-primary/90 shadow-sm">
+        <Button 
+          onClick={() => {
+            setCurrentArea({
+              name: '', description: '', max_hours_per_reservation: 4, cost_per_hour: 0,
+              pricing_type: 'hourly', cost_jornada_diurna: 0, cost_jornada_nocturna: 0,
+              cost_jornada_ambos: 0, jornada_hours_diurna: 10, jornada_hours_nocturna: 6,
+              jornada_start_diurna: '08:00', jornada_end_diurna: '18:00',
+              jornada_start_nocturna: '18:00', jornada_end_nocturna: '23:59',
+              image_url: '', is_active: true
+            });
+            setIsEditing(true);
+          }} 
+          className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 font-semibold h-11 px-5 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+        >
           <Plus className="w-4 h-4 mr-2" /> Nueva Área
         </Button>
       </div>
 
       {isEditing && (
-        <Card className="border-none shadow-md bg-white overflow-hidden">
-          <CardHeader className="p-6 bg-gray-50/50">
-            <CardTitle className="text-lg font-bold text-gray-900">{currentArea.id ? 'Editar Área' : 'Crear Nueva Área'}</CardTitle>
-            <CardDescription className="text-xs">Completa los detalles del espacio</CardDescription>
-          </CardHeader>
+        <Card className="border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden">
+          <div className="bg-gradient-to-r from-primary/5 to-primary/10 px-6 py-4 border-b border-gray-100">
+            <h2 className="text-lg font-bold text-gray-900">{currentArea.id ? 'Editar Área' : 'Crear Nueva Área'}</h2>
+            <p className="text-sm text-gray-500">Completa los detalles del espacio</p>
+          </div>
           <CardContent className="p-6 space-y-6">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -151,66 +215,104 @@ export default function AdminAreasPage() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Hora (COP)</Label>
-                        <Input
-                          type="number"
+                        <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Hora</Label>
+                        <CurrencyInput
                           value={currentArea.cost_per_hour}
-                          onChange={e => setCurrentArea({ ...currentArea, cost_per_hour: parseFloat(e.target.value) })}
-                          required
+                          onChange={(val) => setCurrentArea({ ...currentArea, cost_per_hour: val })}
                           className="h-10 rounded-lg text-sm"
                         />
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="p-4 bg-amber-50 border border-amber-100 rounded-lg space-y-3">
-                        <div className="flex items-center gap-2 text-amber-700">
-                          <Sun className="w-4 h-4" />
-                          <span className="text-xs font-bold uppercase">Jornada Diurna (8am - 6pm)</span>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Jornada Diurna */}
+                        <div className="p-3 bg-white border border-gray-200 rounded-lg space-y-2">
+                          <div className="flex items-center gap-2 text-gray-700">
+                            <Sun className="w-3.5 h-3.5" />
+                            <span className="text-xs font-bold uppercase">Diurna</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-[9px] uppercase font-bold text-gray-400">Desde</Label>
+                              <Input
+                                type="time"
+                                value={currentArea.jornada_start_diurna || '08:00'}
+                                onChange={e => setCurrentArea({ ...currentArea, jornada_start_diurna: e.target.value })}
+                                className="h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[9px] uppercase font-bold text-gray-400">Hasta</Label>
+                              <Input
+                                type="time"
+                                value={currentArea.jornada_end_diurna || '18:00'}
+                                onChange={e => setCurrentArea({ ...currentArea, jornada_end_diurna: e.target.value })}
+                                className="h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[9px] uppercase font-bold text-gray-400">Costo</Label>
+                            <CurrencyInput
+                              value={currentArea.cost_jornada_diurna}
+                              onChange={(val) => setCurrentArea({ ...currentArea, cost_jornada_diurna: val })}
+                              className="h-8 rounded-lg text-xs"
+                            />
+                          </div>
                         </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Diurna</Label>
-                          <Input
-                            type="number"
-                            value={currentArea.cost_jornada_diurna}
-                            onChange={e => setCurrentArea({ ...currentArea, cost_jornada_diurna: parseFloat(e.target.value) })}
-                            className="h-10 rounded-lg text-sm"
-                            placeholder="0"
-                          />
-                        </div>
-                      </div>
 
-                      <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-lg space-y-3">
-                        <div className="flex items-center gap-2 text-indigo-700">
-                          <Moon className="w-4 h-4" />
-                          <span className="text-xs font-bold uppercase">Jornada Nocturna (6pm - 12am)</span>
+                        {/* Jornada Nocturna */}
+                        <div className="p-3 bg-white border border-gray-200 rounded-lg space-y-2">
+                          <div className="flex items-center gap-2 text-gray-700">
+                            <Moon className="w-3.5 h-3.5" />
+                            <span className="text-xs font-bold uppercase">Nocturna</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-[9px] uppercase font-bold text-gray-400">Desde</Label>
+                              <Input
+                                type="time"
+                                value={currentArea.jornada_start_nocturna || '18:00'}
+                                onChange={e => setCurrentArea({ ...currentArea, jornada_start_nocturna: e.target.value })}
+                                className="h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[9px] uppercase font-bold text-gray-400">Hasta</Label>
+                              <Input
+                                type="time"
+                                value={currentArea.jornada_end_nocturna || '23:59'}
+                                onChange={e => setCurrentArea({ ...currentArea, jornada_end_nocturna: e.target.value })}
+                                className="h-8 rounded-lg text-xs"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[9px] uppercase font-bold text-gray-400">Costo</Label>
+                            <CurrencyInput
+                              value={currentArea.cost_jornada_nocturna}
+                              onChange={(val) => setCurrentArea({ ...currentArea, cost_jornada_nocturna: val })}
+                              className="h-8 rounded-lg text-xs"
+                            />
+                          </div>
                         </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Nocturna</Label>
-                          <Input
-                            type="number"
-                            value={currentArea.cost_jornada_nocturna}
-                            onChange={e => setCurrentArea({ ...currentArea, cost_jornada_nocturna: parseFloat(e.target.value) })}
-                            className="h-10 rounded-lg text-sm"
-                            placeholder="0"
-                          />
-                        </div>
-                      </div>
 
-                      <div className="p-4 bg-green-50 border border-green-100 rounded-lg space-y-3">
-                        <div className="flex items-center gap-2 text-green-700">
-                          <Calendar className="w-4 h-4" />
-                          <span className="text-xs font-bold uppercase">Día Completo (Diurna + Nocturna)</span>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Completo</Label>
-                          <Input
-                            type="number"
-                            value={currentArea.cost_jornada_ambos}
-                            onChange={e => setCurrentArea({ ...currentArea, cost_jornada_ambos: parseFloat(e.target.value) })}
-                            className="h-10 rounded-lg text-sm"
-                            placeholder="0"
-                          />
+                        {/* Día Completo */}
+                        <div className="p-3 bg-white border border-gray-200 rounded-lg space-y-2">
+                          <div className="flex items-center gap-2 text-gray-700">
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span className="text-xs font-bold uppercase">Completo</span>
+                          </div>
+                          <div className="h-[62px]"></div>
+                          <div className="space-y-1">
+                            <Label className="text-[9px] uppercase font-bold text-gray-400">Costo</Label>
+                            <CurrencyInput
+                              value={currentArea.cost_jornada_ambos}
+                              onChange={(val) => setCurrentArea({ ...currentArea, cost_jornada_ambos: val })}
+                              className="h-8 rounded-lg text-xs"
+                            />
+                          </div>
                         </div>
                       </div>
                     </>
@@ -229,8 +331,8 @@ export default function AdminAreasPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
-                <Button type="button" variant="ghost" onClick={() => setIsEditing(false)} className="h-10 px-6 font-bold text-gray-400">Cancelar</Button>
-                <Button type="submit" className="h-10 px-6 font-bold">Guardar</Button>
+                <Button type="button" variant="outline" onClick={() => setIsEditing(false)} className="h-11 px-6 font-medium rounded-xl border-gray-200 hover:bg-gray-50">Cancelar</Button>
+                <Button type="submit" className="h-11 px-6 font-semibold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 text-primary-foreground">Guardar</Button>
               </div>
             </form>
           </CardContent>
@@ -283,15 +385,15 @@ export default function AdminAreasPage() {
                     <div className="flex flex-col w-full">
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-[10px] text-gray-400 uppercase">Diurna</span>
-                        <span className="font-bold text-amber-600">{formatCurrency(area.cost_jornada_diurna)}</span>
+                        <span className="font-bold text-gray-900">{formatCurrency(area.cost_jornada_diurna)}</span>
                       </div>
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-[10px] text-gray-400 uppercase">Nocturna</span>
-                        <span className="font-bold text-indigo-600">{formatCurrency(area.cost_jornada_nocturna)}</span>
+                        <span className="font-bold text-gray-900">{formatCurrency(area.cost_jornada_nocturna)}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] text-gray-400 uppercase">Completo</span>
-                        <span className="font-bold text-green-600">{formatCurrency(area.cost_jornada_ambos)}</span>
+                        <span className="font-bold text-gray-900">{formatCurrency(area.cost_jornada_ambos)}</span>
                       </div>
                     </div>
                   ) : (

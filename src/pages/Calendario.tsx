@@ -356,7 +356,8 @@ export default function Calendario() {
             extendedProps: {
                 type: 'maintenance',
                 severity: notice.severity,
-                area: notice.common_areas?.name || 'General'
+                area: notice.common_areas?.name || 'General',
+                content: notice.content || ''
             }
         }));
 
@@ -817,8 +818,18 @@ export default function Calendario() {
                                     }}
                                     events={allEvents}
                                     eventDidMount={(info) => {
+                                        const eventId = info.event.id;
+                                        
+                                        // Eliminar tooltip previo si existe para este evento
+                                        const existingTooltip = document.getElementById(`tooltip-${eventId}`);
+                                        if (existingTooltip) {
+                                            existingTooltip.remove();
+                                        }
+                                        
                                         // Crear tooltip con información del evento
                                         const tooltip = document.createElement('div');
+                                        tooltip.id = `tooltip-${eventId}`;
+                                        
                                         const props = info.event.extendedProps;
                                         const start = info.event.start;
                                         const end = info.event.end;
@@ -842,8 +853,9 @@ export default function Calendario() {
                                                 </div>
                                             `;
                                         } else {
+                                            const observation = props.content ? `<div style="font-size: 11px; color: #6b7280; margin-top: 4px;"><strong>Observación:</strong> ${props.content}</div>` : '';
                                             tooltip.innerHTML = `
-                                                <div style="padding: 10px; min-width: 180px; background: white; border-radius: 8px;">
+                                                <div style="padding: 10px; min-width: 200px; background: white; border-radius: 8px;">
                                                     <div style="font-weight: 600; font-size: 13px; color: #1f2937; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 6px;">
                                                         🔧 Mantenimiento
                                                     </div>
@@ -853,6 +865,10 @@ export default function Calendario() {
                                                     <div style="font-size: 11px; color: #6b7280;">
                                                         <strong>Severidad:</strong> ${props.severity}
                                                     </div>
+                                                    <div style="font-size: 11px; color: #6b7280;">
+                                                        <strong>Hora:</strong> ${start ? start.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''} - ${end ? end.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                    </div>
+                                                    ${observation}
                                                 </div>
                                             `;
                                         }
@@ -875,25 +891,24 @@ export default function Calendario() {
                                             tooltip.style.top = (e.clientY + 15) + 'px';
                                         };
 
-                                        info.el.addEventListener('mouseenter', (e) => {
+                                        // Funciones de handler con referencias estables
+                                        const handleMouseEnter = (e: MouseEvent) => {
                                             tooltip.style.display = 'block';
-                                            updateTooltipPosition(e as any);
-                                        });
+                                            updateTooltipPosition(e);
+                                        };
 
-                                        info.el.addEventListener('mousemove', (e) => {
-                                            updateTooltipPosition(e as any);
-                                        });
+                                        const handleMouseMove = (e: MouseEvent) => {
+                                            updateTooltipPosition(e);
+                                        };
 
-                                        info.el.addEventListener('mouseleave', () => {
+                                        const handleMouseLeave = () => {
                                             tooltip.style.display = 'none';
-                                            if (tooltip.parentNode) {
-                                                document.body.removeChild(tooltip);
-                                            }
-                                        });
+                                        };
 
-                                        info.el.addEventListener('mouseleave', () => {
-                                            tooltip.style.display = 'none';
-                                        });
+                                        // Agregar los event listeners
+                                        info.el.addEventListener('mouseenter', handleMouseEnter);
+                                        info.el.addEventListener('mousemove', handleMouseMove);
+                                        info.el.addEventListener('mouseleave', handleMouseLeave);
                                     }}
                                     height="auto"
                                     locale="es"

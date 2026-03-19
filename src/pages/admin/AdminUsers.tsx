@@ -3,20 +3,57 @@ import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { AlertDialog, Modal, DropdownMenu, DropdownMenuItem } from '@/components/ui/alert-dialog';
 import { 
   User, 
   Search,
   Mail,
   Smartphone,
   MapPin,
-  MoreHorizontal
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Shield,
+  ShieldOff,
+  Save,
+  X,
+  Users
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  apartment: string;
+  phone: string;
+  role: string;
+  created_at: string;
+}
+
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Modal states
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [roleChangeUser, setRoleChangeUser] = useState<UserProfile | null>(null);
+  const [isRoleAlertOpen, setIsRoleAlertOpen] = useState(false);
+  
+  // Form state
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    apartment: '',
+    phone: '',
+    role: 'user'
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -32,12 +69,71 @@ export default function AdminUsersPage() {
     setLoading(false);
   };
 
-  const handleToggleRole = async (user: any) => {
-    const newRole = user.role === 'admin' ? 'user' : 'admin';
-    if (!confirm(`¿Cambiar el rol de ${user.full_name} a ${newRole}?`)) return;
+  const handleToggleRole = async () => {
+    if (!roleChangeUser) return;
+    const newRole = roleChangeUser.role === 'admin' ? 'user' : 'admin';
     
-    await supabase.from('profiles').update({ role: newRole }).eq('id', user.id);
+    await supabase.from('profiles').update({ role: newRole }).eq('id', roleChangeUser.id);
     fetchUsers();
+    setIsRoleAlertOpen(false);
+    setRoleChangeUser(null);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deletingUser) return;
+    
+    await supabase.from('profiles').delete().eq('id', deletingUser.id);
+    fetchUsers();
+    setIsDeleteAlertOpen(false);
+    setDeletingUser(null);
+  };
+
+  const openEditModal = (user: UserProfile) => {
+    setEditingUser(user);
+    setEditForm({
+      full_name: user.full_name || '',
+      apartment: user.apartment || '',
+      phone: user.phone || '',
+      role: user.role || 'user'
+    });
+    setIsEditModalOpen(true);
+    setOpenDropdownId(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+    setIsSubmitting(true);
+    
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        full_name: editForm.full_name,
+        apartment: editForm.apartment,
+        phone: editForm.phone,
+        role: editForm.role
+      })
+      .eq('id', editingUser.id);
+    
+    if (!error) {
+      fetchUsers();
+      setIsEditModalOpen(false);
+      setEditingUser(null);
+    } else {
+      console.error('Error updating user:', error);
+    }
+    setIsSubmitting(false);
+  };
+
+  const confirmDelete = (user: UserProfile) => {
+    setDeletingUser(user);
+    setIsDeleteAlertOpen(true);
+    setOpenDropdownId(null);
+  };
+
+  const confirmRoleChange = (user: UserProfile) => {
+    setRoleChangeUser(user);
+    setIsRoleAlertOpen(true);
+    setOpenDropdownId(null);
   };
 
   const filteredUsers = users.filter(user => 
@@ -48,12 +144,20 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Usuarios</h1>
-        <p className="text-gray-500 text-sm">Administra los permisos y perfiles de los residentes.</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-primary rounded-xl shadow-lg shadow-primary/20">
+            <Users className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Usuarios</h1>
+            <p className="text-gray-500 text-sm">Administra los permisos y perfiles de los residentes.</p>
+          </div>
+        </div>
       </div>
 
-      <Card className="border-none shadow-sm bg-white overflow-hidden">
+      <Card className="border-none shadow-sm bg-white">
         <CardHeader className="p-4 bg-gray-50/50 border-b border-gray-100">
           <div className="relative w-full md:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -66,7 +170,7 @@ export default function AdminUsersPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-visible">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="bg-gray-50/30 border-b border-gray-100">
@@ -133,18 +237,41 @@ export default function AdminUsersPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            className="h-7 px-3 text-[10px] font-bold border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                            onClick={() => handleToggleRole(user)}
+                        <div className="flex justify-end">
+                          <DropdownMenu
+                            trigger={
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                                onClick={() => setOpenDropdownId(openDropdownId === user.id ? null : user.id)}
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            }
                           >
-                            Cambiar Rol
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-primary">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
+                            <DropdownMenuItem onClick={() => openEditModal(user)}>
+                              <Pencil className="h-4 w-4" />
+                              Editar usuario
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => confirmRoleChange(user)}>
+                              {user.role === 'admin' ? (
+                                <>
+                                  <ShieldOff className="h-4 w-4" />
+                                  Quitar admin
+                                </>
+                              ) : (
+                                <>
+                                  <Shield className="h-4 w-4" />
+                                  Hacer admin
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => confirmDelete(user)} variant="destructive">
+                              <Trash2 className="h-4 w-4" />
+                              Eliminar usuario
+                            </DropdownMenuItem>
+                          </DropdownMenu>
                         </div>
                       </td>
                     </tr>
@@ -155,6 +282,143 @@ export default function AdminUsersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit User Modal */}
+      <Modal
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        title="Editar Usuario"
+        size="md"
+      >
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="editName" className="text-sm font-medium text-gray-700">
+              Nombre completo
+            </Label>
+            <Input
+              id="editName"
+              value={editForm.full_name}
+              onChange={e => setEditForm({ ...editForm, full_name: e.target.value })}
+              placeholder="Nombre del usuario"
+              className="h-11 bg-gray-50 border-gray-200 rounded-lg focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="editApartment" className="text-sm font-medium text-gray-700">
+                Apartamento
+              </Label>
+              <Input
+                id="editApartment"
+                value={editForm.apartment}
+                onChange={e => setEditForm({ ...editForm, apartment: e.target.value })}
+                placeholder="Apto 101"
+                className="h-11 bg-gray-50 border-gray-200 rounded-lg focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="editPhone" className="text-sm font-medium text-gray-700">
+                Teléfono
+              </Label>
+              <Input
+                id="editPhone"
+                value={editForm.phone}
+                onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
+                placeholder="300 123 4567"
+                className="h-11 bg-gray-50 border-gray-200 rounded-lg focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-gray-700">
+              Rol del usuario
+            </Label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setEditForm({ ...editForm, role: 'user' })}
+                className={`
+                  h-11 px-4 rounded-xl border-2 font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2
+                  ${editForm.role === 'user' 
+                    ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                  }
+                `}
+              >
+                <User className="h-4 w-4" />
+                Usuario
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditForm({ ...editForm, role: 'admin' })}
+                className={`
+                  h-11 px-4 rounded-xl border-2 font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2
+                  ${editForm.role === 'admin' 
+                    ? 'border-purple-500 bg-purple-50 text-purple-700' 
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                  }
+                `}
+              >
+                <Shield className="h-4 w-4" />
+                Administrador
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsEditModalOpen(false)}
+              className="flex-1 h-11 rounded-xl border-gray-200 font-medium hover:bg-gray-50"
+            >
+              <X className="mr-2 h-4 w-4" />
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={isSubmitting}
+              className="flex-1 h-11 rounded-xl font-medium bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 text-primary-foreground transition-all duration-200"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Guardar cambios
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Role Change Confirmation */}
+      <AlertDialog
+        open={isRoleAlertOpen}
+        onOpenChange={setIsRoleAlertOpen}
+        title={roleChangeUser?.role === 'admin' ? 'Quitar permisos de admin' : 'Conceder permisos de admin'}
+        description={`¿Estás seguro de que quieres ${roleChangeUser?.role === 'admin' ? 'quitar los permisos de administrador' : 'hacer administrador'} a ${roleChangeUser?.full_name}?`}
+        confirmText={roleChangeUser?.role === 'admin' ? 'Quitar admin' : 'Hacer admin'}
+        onConfirm={handleToggleRole}
+      />
+
+      {/* Delete Confirmation */}
+      <AlertDialog
+        open={isDeleteAlertOpen}
+        onOpenChange={setIsDeleteAlertOpen}
+        title="Eliminar usuario"
+        description={`¿Estás seguro de que quieres eliminar a ${deletingUser?.full_name}? Esta acción no se puede deshacer y se eliminarán todos sus datos y reservas.`}
+        confirmText="Eliminar usuario"
+        onConfirm={handleDeleteUser}
+        variant="destructive"
+      />
     </div>
   );
 }

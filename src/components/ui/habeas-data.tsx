@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Shield, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+// import { cn } from '@/lib/utils';
 
 interface HabeasDataProps {
     onAccept: (accepted: boolean) => void;

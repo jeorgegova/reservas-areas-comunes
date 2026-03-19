@@ -44,7 +44,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       { name: 'Áreas Comunes', path: '/admin/areas', icon: Building2 },
       { name: 'Usuarios', path: '/admin/users', icon: User },
     ];
-    navItems = [...adminItems, { name: 'Reservar', path: '/reservations/new', icon: Calendar }, { name: 'Mis Reservas', path: '/reservations/my', icon: History }, { name: 'Mantenimientos', path: '/maintenance', icon: Bell }, { name: 'Mi Perfil', path: '/profile', icon: User }];
+    navItems = [...adminItems, { name: 'Reservar', path: '/reservations/new', icon: Calendar }, { name: 'Mantenimientos', path: '/maintenance', icon: Bell }, { name: 'Mi Perfil', path: '/profile', icon: User }];
   }
 
   return (

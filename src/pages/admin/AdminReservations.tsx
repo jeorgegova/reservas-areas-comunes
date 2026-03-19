@@ -15,7 +15,10 @@ import {
   MoreHorizontal,
   Calendar,
   MapPin,
-  Clock
+  Clock,
+  CheckCircle,
+  XCircle,
+  ClipboardList
 } from 'lucide-react';
 
 export default function AdminReservationsPage() {
@@ -70,10 +73,16 @@ export default function AdminReservationsPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Reservas</h1>
-          <p className="text-gray-500 text-sm">Valida y gestiona las solicitudes del conjunto.</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-primary rounded-xl shadow-lg shadow-primary/20">
+            <ClipboardList className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Reservas</h1>
+            <p className="text-gray-500 text-sm">Valida y gestiona las solicitudes del conjunto.</p>
+          </div>
         </div>
       </div>
 
@@ -183,24 +192,23 @@ export default function AdminReservationsPage() {
                             <>
                               <Button 
                                 size="sm" 
-                                className="h-7 px-3 bg-green-600 hover:bg-green-700 text-[10px]"
+                                className="h-8 px-3 bg-green-600 hover:bg-green-700 text-xs font-medium shadow-lg shadow-green-500/25"
                                 onClick={() => handleUpdateStatus(res.id, 'approved')}
                               >
+                                <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
                                 Aprobar
                               </Button>
                               <Button 
                                 size="sm" 
                                 variant="destructive" 
-                                className="h-7 px-3 text-[10px]"
+                                className="h-8 px-3 text-xs font-medium"
                                 onClick={() => handleUpdateStatus(res.id, 'rejected')}
                               >
+                                <XCircle className="w-3.5 h-3.5 mr-1.5" />
                                 Rechazar
                               </Button>
                             </>
                           )}
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-400 hover:text-primary">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
                         </div>
                       </td>
                     </tr>

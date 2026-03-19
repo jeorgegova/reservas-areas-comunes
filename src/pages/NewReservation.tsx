@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+// import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatCurrency, cn, detoxTime } from '@/lib/utils';
 import {
@@ -19,7 +19,8 @@ import {
   Moon,
   Calendar
 } from 'lucide-react';
-import { format, addHours, parseISO } from 'date-fns';
+import { format, addHours, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isToday, addMonths, subMonths } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function NewReservationPage() {
   const { profile } = useAuth();
@@ -116,6 +117,7 @@ export default function NewReservationPage() {
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date);
+    setJornadaError(null);
     if (selectedArea) {
       fetchBusySlots(selectedArea.id);
     }
@@ -165,13 +167,13 @@ export default function NewReservationPage() {
     return selectedArea.cost_per_hour * duration;
   };
 
-  // Obtener las horas de la jornada seleccionada
-  const getJornadaHours = () => {
-    if (!selectedArea) return 0;
-    if (selectedJornada === 'diurna') return selectedArea.jornada_hours_diurna || 10;
-    if (selectedJornada === 'nocturna') return selectedArea.jornada_hours_nocturna || 6;
-    if (selectedJornada === 'ambos') return (selectedArea.jornada_hours_diurna || 10) + (selectedArea.jornada_hours_nocturna || 6);
-    return 0;
+  // Obtener la hora de fin de la jornada según la configuración del área
+  const getJornadaEndTime = () => {
+    if (!selectedArea) return '';
+    if (selectedJornada === 'diurna') return selectedArea.jornada_end_diurna || '18:00';
+    if (selectedJornada === 'nocturna') return selectedArea.jornada_end_nocturna || '23:59';
+    if (selectedJornada === 'ambos') return selectedArea.jornada_end_nocturna || '23:59';
+    return '';
   };
 
   // Determinar la hora de fin según el tipo de precio
@@ -179,20 +181,129 @@ export default function NewReservationPage() {
     if (!selectedArea || !selectedStartTime) return '';
 
     if (selectedArea.pricing_type === 'jornada') {
-      const hours = getJornadaHours();
-      return format(addHours(parseISO(`${selectedDate}T${selectedStartTime}:00`), hours), "yyyy-MM-dd'T'HH:mm:ss");
+      const endTime = getJornadaEndTime();
+      return format(parseISO(`${selectedDate}T${endTime}:00`), "yyyy-MM-dd'T'HH:mm:ss");
     }
     return format(addHours(parseISO(`${selectedDate}T${selectedStartTime}:00`), duration), "yyyy-MM-dd'T'HH:mm:ss");
   };
 
+  // Obtener el texto del horario para mostrar
+  const getJornadaScheduleText = () => {
+    if (!selectedArea) return '';
+    if (selectedJornada === 'diurna') return `Diurna (${selectedArea.jornada_start_diurna || '08:00'} - ${selectedArea.jornada_end_diurna || '18:00'})`;
+    if (selectedJornada === 'nocturna') return `Nocturna (${selectedArea.jornada_start_nocturna || '18:00'} - ${selectedArea.jornada_end_nocturna || '23:59'})`;
+    if (selectedJornada === 'ambos') return `Completo (${selectedArea.jornada_start_diurna || '08:00'} - ${selectedArea.jornada_end_nocturna || '23:59'})`;
+    return '';
+  };
+
+  // Verificar si la jornada está disponible para la fecha seleccionada
+  const checkJornadaAvailability = () => {
+    if (!selectedArea || !selectedJornada || !selectedDate) return { available: true };
+
+    const jornadaStart = selectedJornada === 'diurna' 
+      ? selectedArea.jornada_start_diurna || '08:00'
+      : selectedJornada === 'nocturna'
+        ? selectedArea.jornada_start_nocturna || '18:00'
+        : selectedArea.jornada_start_diurna || '08:00';
+
+    const jornadaEnd = selectedJornada === 'diurna'
+      ? selectedArea.jornada_end_diurna || '18:00'
+      : selectedJornada === 'nocturna'
+        ? selectedArea.jornada_end_nocturna || '23:59'
+        : selectedArea.jornada_end_nocturna || '23:59';
+
+    const proposedStart = parseISO(`${selectedDate}T${jornadaStart}:00`);
+    const proposedEnd = parseISO(`${selectedDate}T${jornadaEnd}:00`);
+
+    // Verificar si hay conflicto con reservas existentes
+    const conflict = existingReservations.find(res => {
+      const resStart = parseISO(detoxTime(res.start_datetime));
+      const resEnd = parseISO(detoxTime(res.end_datetime));
+      return (proposedStart < resEnd && proposedEnd > resStart);
+    });
+
+    if (conflict) {
+      return { available: false, message: 'Ya existe una reserva para esta jornada en la fecha seleccionada' };
+    }
+
+    // Verificar si hay conflicto con mantenimiento
+    const maintenanceConflict = activeMaintenances.find(maint => {
+      const maintStart = parseISO(detoxTime(maint.starts_at));
+      const maintEnd = parseISO(detoxTime(maint.ends_at));
+      return (proposedStart < maintEnd && proposedEnd > maintStart);
+    });
+
+    if (maintenanceConflict) {
+      return { available: false, message: `El área está en mantenimiento: ${maintenanceConflict.title}` };
+    }
+
+    return { available: true };
+  };
+
+  const [jornadaError, setJornadaError] = useState<string | null>(null);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [daysWithReservations, setDaysWithReservations] = useState<Set<string>>(new Set());
+
+  // Fetch reservations for the current month to show availability on calendar
+  useEffect(() => {
+    if (selectedArea) {
+      fetchMonthReservations();
+    }
+  }, [selectedArea, currentMonth]);
+
+  const fetchMonthReservations = async () => {
+    if (!selectedArea) return;
+    
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    
+    const { data } = await supabase
+      .from('reservations')
+      .select('start_datetime, end_datetime')
+      .eq('common_area_id', selectedArea.id)
+      .in('status', ['approved', 'pending_validation', 'pending_payment'])
+      .gte('start_datetime', monthStart.toISOString())
+      .lte('start_datetime', monthEnd.toISOString());
+
+    if (data) {
+      const days = new Set<string>();
+      data.forEach(res => {
+        const start = parseISO(detoxTime(res.start_datetime));
+        const end = parseISO(detoxTime(res.end_datetime));
+        const daySlots = eachDayOfInterval({ start, end });
+        daySlots.forEach(day => {
+          days.add(format(day, 'yyyy-MM-dd'));
+        });
+      });
+      setDaysWithReservations(days);
+    }
+  };
+
+  const getDaysInMonth = () => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    return eachDayOfInterval({ start: monthStart, end: monthEnd });
+  };
+
+  const firstDayOfMonth = startOfMonth(currentMonth).getDay();
+
   const handleReserve = async () => {
     if (!profile || !selectedArea || !selectedStartTime) return;
 
-    // Para áreas por jornada, validar que se haya seleccionado una jornada
-    if (selectedArea.pricing_type === 'jornada' && !selectedJornada) {
-      setBlockingError('Por favor selecciona una jornada (diurna, nocturna o completo)');
-      setLoading(false);
-      return;
+    // Para áreas por jornada, validar disponibilidad
+    if (selectedArea.pricing_type === 'jornada') {
+      if (!selectedJornada) {
+        setBlockingError('Por favor selecciona una jornada (diurna, nocturna o completo)');
+        setLoading(false);
+        return;
+      }
+      // Verificar disponibilidad antes de crear
+      const availability = checkJornadaAvailability();
+      if (!availability.available) {
+        setBlockingError(availability.message || 'El horario seleccionado ya no está disponible');
+        setLoading(false);
+        return;
+      }
     }
 
     // Limpiar errores anteriores
@@ -266,17 +377,63 @@ export default function NewReservationPage() {
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Nueva Reserva</h1>
           <p className="text-gray-500 text-sm">Sigue los pasos para asegurar tu espacio.</p>
         </div>
-        <div className="flex items-center gap-3">
-          {[1, 2, 3].map((s) => (
-            <div
-              key={s}
-              className={cn(
-                "h-2.5 rounded-full transition-all duration-500",
-                step === s ? "w-12 bg-primary" :
-                  step > s ? "w-8 bg-emerald-500" : "w-8 bg-gray-200"
-              )}
-            />
-          ))}
+        <div className="w-full">
+          {/* Barra de progreso */}
+          <div className="flex items-center gap-2 mb-4">
+            {/* Paso 1 */}
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300",
+                step === 1 ? "bg-primary text-white" : step > 1 ? "bg-emerald-500 text-white" : "bg-gray-200 text-gray-500"
+              )}>
+                {step > 1 ? "✓" : "1"}
+              </div>
+              <span className={cn(
+                "text-sm font-medium transition-colors duration-300",
+                step >= 1 ? "text-gray-900" : "text-gray-400"
+              )}>Seleccionar área</span>
+            </div>
+            
+            {/* Línea conectora */}
+            <div className={cn(
+              "flex-1 h-0.5 mx-2 transition-colors duration-300",
+              step > 1 ? "bg-emerald-500" : "bg-gray-200"
+            )} />
+            
+            {/* Paso 2 */}
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300",
+                step === 2 ? "bg-primary text-white" : step > 2 ? "bg-emerald-500 text-white" : "bg-gray-200 text-gray-500"
+              )}>
+                {step > 2 ? "✓" : "2"}
+              </div>
+              <span className={cn(
+                "text-sm font-medium transition-colors duration-300",
+                step >= 2 ? "text-gray-900" : "text-gray-400"
+              )}>Configurar</span>
+            </div>
+            
+            {/* Línea conectora */}
+            <div className={cn(
+              "flex-1 h-0.5 mx-2 transition-colors duration-300",
+              step > 2 ? "bg-emerald-500" : "bg-gray-200"
+            )} />
+            
+            {/* Paso 3 */}
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300",
+                step === 3 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+              )}>
+                3
+              </div>
+              <span className={cn(
+                "text-sm font-medium transition-colors duration-300",
+                step >= 3 ? "text-gray-900" : "text-gray-400"
+              )}>Pagar</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -370,76 +527,94 @@ export default function NewReservationPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Fecha de la reserva</Label>
-                  <Input
-                    type="date"
-                    value={selectedDate}
-                    min={format(new Date(), 'yyyy-MM-dd')}
-                    onChange={(e) => handleDateChange(e.target.value)}
-                    className=""
-                  />
+                  {/* Mini Calendar */}
+                  <div className="mt-4 p-3 bg-white border border-gray-200 rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <button
+                        onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-sm font-medium">
+                        {format(currentMonth, 'MMMM yyyy', { locale: es })}
+                      </span>
+                      <button
+                        onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <ChevronLeft className="w-4 h-4 rotate-180" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1 text-center">
+                      {['D', 'L', 'M', 'X', 'J', 'V', 'S'].map((day, i) => (
+                        <div key={i} className="text-[10px] font-medium text-gray-400 uppercase">
+                          {day}
+                        </div>
+                      ))}
+                      {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+                        <div key={`empty-${i}`} />
+                      ))}
+                      {getDaysInMonth().map(day => {
+                        const dateStr = format(day, 'yyyy-MM-dd');
+                        const hasReservation = daysWithReservations.has(dateStr);
+                        const isSelected = dateStr === selectedDate;
+                        const isPast = day < new Date() && !isToday(day);
+                        
+                        return (
+                          <button
+                            key={dateStr}
+                            disabled={isPast}
+                            onClick={() => handleDateChange(dateStr)}
+                            className={cn(
+                              "w-7 h-7 text-xs rounded-full flex items-center justify-center transition-colors",
+                              isSelected && "bg-primary text-white",
+                              !isSelected && !isPast && "hover:bg-gray-100",
+                              isPast && "text-gray-300 cursor-not-allowed",
+                              hasReservation && !isSelected && !isPast && "bg-amber-100 text-amber-700",
+                              isToday(day) && !isSelected && "ring-1 ring-primary ring-inset"
+                            )}
+                          >
+                            {format(day, 'd')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 flex gap-3 text-[10px] text-gray-500 justify-center">
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-amber-100 rounded" />
+                        <span>Con reservas</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-gray-100 rounded" />
+                        <span>Disponible</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   {selectedArea.pricing_type === 'jornada' ? (
-                    <>
-                      <Label className="text-sm font-medium">Seleccionar Jornada</Label>
-                      <div className="grid grid-cols-1 gap-2">
-                        <Button
-                          variant={selectedJornada === 'diurna' ? "default" : "outline"}
-                          className={cn(
-                            "w-full h-14 justify-start gap-3",
-                            selectedJornada === 'diurna' && "bg-amber-500 hover:bg-amber-600 border-amber-500"
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-5 h-5 text-primary" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">
+                            {selectedJornada 
+                              ? `Jornada seleccionada: ${selectedJornada === 'diurna' ? 'Diurna' : selectedJornada === 'nocturna' ? 'Nocturna' : 'Completo'}`
+                              : 'Selecciona una jornada disponible'
+                            }
+                          </p>
+                          {selectedJornada && (
+                            <p className="text-lg font-bold text-primary">
+                              {selectedJornada === 'diurna' && `${selectedArea.jornada_start_diurna || '08:00'} - ${selectedArea.jornada_end_diurna || '18:00'}`}
+                              {selectedJornada === 'nocturna' && `${selectedArea.jornada_start_nocturna || '18:00'} - ${selectedArea.jornada_end_nocturna || '23:59'}`}
+                              {selectedJornada === 'ambos' && `${selectedArea.jornada_start_diurna || '08:00'} - ${selectedArea.jornada_end_nocturna || '23:59'}`}
+                            </p>
                           )}
-                          onClick={() => setSelectedJornada('diurna')}
-                        >
-                          <Sun className="w-5 h-5" />
-                          <div className="text-left">
-                            <div className="font-medium">Diurna</div>
-                            <div className="text-xs opacity-80">8:00 AM - 6:00 PM</div>
-                          </div>
-                          <div className="ml-auto font-bold">
-                            {formatCurrency(selectedArea.cost_jornada_diurna || 0)}
-                          </div>
-                        </Button>
-
-                        <Button
-                          variant={selectedJornada === 'nocturna' ? "default" : "outline"}
-                          className={cn(
-                            "w-full h-14 justify-start gap-3",
-                            selectedJornada === 'nocturna' && "bg-indigo-500 hover:bg-indigo-600 border-indigo-500"
-                          )}
-                          onClick={() => setSelectedJornada('nocturna')}
-                        >
-                          <Moon className="w-5 h-5" />
-                          <div className="text-left">
-                            <div className="font-medium">Nocturna</div>
-                            <div className="text-xs opacity-80">6:00 PM - 12:00 AM</div>
-                          </div>
-                          <div className="ml-auto font-bold">
-                            {formatCurrency(selectedArea.cost_jornada_nocturna || 0)}
-                          </div>
-                        </Button>
-
-                        <Button
-                          variant={selectedJornada === 'ambos' ? "default" : "outline"}
-                          className={cn(
-                            "w-full h-14 justify-start gap-3",
-                            selectedJornada === 'ambos' && "bg-green-500 hover:bg-green-600 border-green-500"
-                          )}
-                          onClick={() => setSelectedJornada('ambos')}
-                        >
-                          <Calendar className="w-5 h-5" />
-                          <div className="text-left">
-                            <div className="font-medium">Completo</div>
-                            <div className="text-xs opacity-80">Día completo</div>
-                          </div>
-                          <div className="ml-auto font-bold">
-                            {formatCurrency(selectedArea.cost_jornada_ambos || 0)}
-                          </div>
-                        </Button>
+                        </div>
                       </div>
-                    </>
+                    </div>
                   ) : (
                     <>
                       <Label className="text-sm font-medium">Duración (horas)</Label>
@@ -479,43 +654,244 @@ export default function NewReservationPage() {
               </div>
 
               <div className="space-y-4">
-                <Label className="text-sm font-medium text-gray-700">Horas disponibles</Label>
-                <div className="grid grid-cols-4 gap-3">
-                  {timeSlots.map(time => {
-                    const info = getSlotStatus(time);
-                    const isOccupied = info.status !== 'available';
-
-                    return (
-                      <div key={time} className="relative group">
-                        <Button
-                          variant="outline"
-                          disabled={isOccupied}
-                          onClick={() => setSelectedStartTime(time)}
-                          className={cn(
-                            "w-full h-12 text-sm font-medium rounded-lg transition-colors",
-                            selectedStartTime === time
-                              ? "bg-primary text-white border-primary hover:bg-primary/90"
-                              : "border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300",
-                            info.status === 'reserved' && "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed",
-                            info.status === 'maintenance' && "bg-red-50 text-red-400 border-red-200 cursor-not-allowed hover:bg-red-50 hover:border-red-200"
-                          )}
-                        >
-                          {time}
-                          {info.status === 'maintenance' && (
-                            <Hammer className="w-3 h-3 ml-1.5" />
-                          )}
-                        </Button>
-
-                        {isOccupied && (
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
-                            {info.status === 'maintenance' ? info.reason : 'Horario no disponible'}
+                <Label className="text-sm font-medium text-gray-700">
+                  {selectedArea.pricing_type === 'jornada' ? 'Jornadas disponibles' : 'Horas disponibles'}
+                </Label>
+                {selectedArea.pricing_type === 'jornada' ? (
+                  <div className="space-y-3">
+                    {/* Jornada Diurna */}
+                    {(() => {
+                      const startTime = selectedArea.jornada_start_diurna || '08:00';
+                      const endTime = selectedArea.jornada_end_diurna || '18:00';
+                      const slotStart = parseISO(`${selectedDate}T${startTime}:00`);
+                      const slotEnd = parseISO(`${selectedDate}T${endTime}:00`);
+                      
+                      const isReserved = existingReservations.some(res => {
+                        const resStart = parseISO(detoxTime(res.start_datetime));
+                        const resEnd = parseISO(detoxTime(res.end_datetime));
+                        return (slotStart < resEnd && slotEnd > resStart);
+                      });
+                      
+                      const maintenance = activeMaintenances.find(maint => {
+                        const maintStart = parseISO(detoxTime(maint.starts_at));
+                        const maintEnd = parseISO(detoxTime(maint.ends_at));
+                        return (slotStart < maintEnd && slotEnd > maintStart);
+                      });
+                      
+                      const isDisabled = isReserved || !!maintenance;
+                      
+                      return (
+                        <div className="relative group">
+                          <Button
+                            variant={selectedJornada === 'diurna' ? "default" : "outline"}
+                            disabled={isDisabled}
+                            onClick={() => {
+                              setSelectedJornada('diurna');
+                              setSelectedStartTime(startTime);
+                              setJornadaError(null);
+                            }}
+                            className={cn(
+                              "w-full h-14 justify-start gap-3",
+                              selectedJornada === 'diurna' ? "bg-primary border-primary" : "border-gray-200",
+                              isDisabled && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            <Sun className="w-5 h-5" />
+                            <div className="text-left flex-1">
+                              <div className="font-medium">Diurna</div>
+                              <div className="text-xs opacity-80">{startTime} - {endTime}</div>
+                            </div>
+                            <div className="ml-auto font-bold">
+                              {formatCurrency(selectedArea.cost_jornada_diurna || 0)}
+                            </div>
+                          </Button>
+                          
+                          {isDisabled && (
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
+                            {maintenance ? `Mantenimiento: ${maintenance.title}` : 'Horario con reserva'}
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
                           </div>
-                        )}
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Jornada Nocturna */}
+                    {(() => {
+                      const startTime = selectedArea.jornada_start_nocturna || '18:00';
+                      const endTime = selectedArea.jornada_end_nocturna || '23:59';
+                      const slotStart = parseISO(`${selectedDate}T${startTime}:00`);
+                      const slotEnd = parseISO(`${selectedDate}T${endTime}:00`);
+                      
+                      const isReserved = existingReservations.some(res => {
+                        const resStart = parseISO(detoxTime(res.start_datetime));
+                        const resEnd = parseISO(detoxTime(res.end_datetime));
+                        return (slotStart < resEnd && slotEnd > resStart);
+                      });
+                      
+                      const maintenance = activeMaintenances.find(maint => {
+                        const maintStart = parseISO(detoxTime(maint.starts_at));
+                        const maintEnd = parseISO(detoxTime(maint.ends_at));
+                        return (slotStart < maintEnd && slotEnd > maintStart);
+                      });
+                      
+                      const isDisabled = isReserved || !!maintenance;
+                      
+                      return (
+                        <div className="relative group">
+                          <Button
+                            variant={selectedJornada === 'nocturna' ? "default" : "outline"}
+                            disabled={isDisabled}
+                            onClick={() => {
+                              setSelectedJornada('nocturna');
+                              setSelectedStartTime(startTime);
+                              setJornadaError(null);
+                            }}
+                            className={cn(
+                              "w-full h-14 justify-start gap-3",
+                              selectedJornada === 'nocturna' ? "bg-primary border-primary" : "border-gray-200",
+                              isDisabled && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            <Moon className="w-5 h-5" />
+                            <div className="text-left flex-1">
+                              <div className="font-medium">Nocturna</div>
+                              <div className="text-xs opacity-80">{startTime} - {endTime}</div>
+                            </div>
+                            <div className="ml-auto font-bold">
+                              {formatCurrency(selectedArea.cost_jornada_nocturna || 0)}
+                            </div>
+                          </Button>
+                          
+                          {isDisabled && (
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
+                              {maintenance ? `Mantenimiento: ${maintenance.title}` : 'Horario con reserva'}
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Día Completo */}
+                    {(() => {
+                      const startTime = selectedArea.jornada_start_diurna || '08:00';
+                      const endTime = selectedArea.jornada_end_nocturna || '23:59';
+                      const slotStart = parseISO(`${selectedDate}T${startTime}:00`);
+                      const slotEnd = parseISO(`${selectedDate}T${endTime}:00`);
+                      
+                      const isReserved = existingReservations.some(res => {
+                        const resStart = parseISO(detoxTime(res.start_datetime));
+                        const resEnd = parseISO(detoxTime(res.end_datetime));
+                        return (slotStart < resEnd && slotEnd > resStart);
+                      });
+                      
+                      const maintenance = activeMaintenances.find(maint => {
+                        const maintStart = parseISO(detoxTime(maint.starts_at));
+                        const maintEnd = parseISO(detoxTime(maint.ends_at));
+                        return (slotStart < maintEnd && slotEnd > maintStart);
+                      });
+                      
+                      const isDisabled = isReserved || !!maintenance;
+                      
+                      return (
+                        <div className="relative group">
+                          <Button
+                            variant={selectedJornada === 'ambos' ? "default" : "outline"}
+                            disabled={isDisabled}
+                            onClick={() => {
+                              setSelectedJornada('ambos');
+                              setSelectedStartTime(startTime);
+                              setJornadaError(null);
+                            }}
+                            className={cn(
+                              "w-full h-14 justify-start gap-3",
+                              selectedJornada === 'ambos' ? "bg-primary border-primary" : "border-gray-200",
+                              isDisabled && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            <Calendar className="w-5 h-5" />
+                            <div className="text-left flex-1">
+                              <div className="font-medium">Completo</div>
+                              <div className="text-xs opacity-80">{startTime} - {endTime}</div>
+                            </div>
+                            <div className="ml-auto font-bold">
+                              {formatCurrency(selectedArea.cost_jornada_ambos || 0)}
+                            </div>
+                          </Button>
+                          
+                          {isDisabled && (
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
+                              {maintenance ? `Mantenimiento: ${maintenance.title}` : 'Horario con reserva'}
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Visualización del rango de horas seleccionadas */}
+                    {selectedStartTime && duration > 0 && (
+                      <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                        <div className="flex items-center gap-2 text-sm text-primary font-medium">
+                          <Clock className="w-4 h-4" />
+                          <span>
+                            Reserva de {selectedStartTime} a {format(addHours(parseISO(`${selectedDate}T${selectedStartTime}:00`), duration), 'HH:mm')} ({duration} {duration === 1 ? 'hora' : 'horas'})
+                          </span>
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                    
+                    <div className="grid grid-cols-4 gap-3">
+                      {timeSlots.map(time => {
+                        const info = getSlotStatus(time);
+                        const isOccupied = info.status !== 'available';
+                        
+                        // Calcular si este horario está dentro del rango seleccionado
+                        const isInRange = selectedStartTime && duration > 0 && (() => {
+                          const selectedHour = parseInt(selectedStartTime.split(':')[0]);
+                          const currentHour = parseInt(time.split(':')[0]);
+                          return currentHour >= selectedHour && currentHour < selectedHour + duration;
+                        })();
+
+                        return (
+                          <div key={time} className="relative group">
+                            <Button
+                              variant="outline"
+                              disabled={isOccupied}
+                              onClick={() => setSelectedStartTime(time)}
+                              className={cn(
+                                "w-full h-12 text-sm font-medium rounded-lg transition-all duration-200",
+                                selectedStartTime === time
+                                  ? "bg-primary text-white border-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
+                                  : isInRange && !isOccupied
+                                    ? "bg-primary/20 text-primary border-primary/30 hover:bg-primary/30"
+                                    : "border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300",
+                                info.status === 'reserved' && "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed",
+                                info.status === 'maintenance' && "bg-red-50 text-red-400 border-red-200 cursor-not-allowed hover:bg-red-50 hover:border-red-200"
+                              )}
+                            >
+                              {time}
+                              {info.status === 'maintenance' && (
+                                <Hammer className="w-3 h-3 ml-1.5" />
+                              )}
+                            </Button>
+
+                            {isOccupied && (
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
+                                {info.status === 'maintenance' ? `Mantenimiento: ${info.reason}` : 'Horario con reserva'}
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                
                 <div className="flex gap-4 pt-2 text-xs text-gray-500">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-white border border-gray-200" />
@@ -533,12 +909,29 @@ export default function NewReservationPage() {
               </div>
             </div>
 
+            {jornadaError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                {jornadaError}
+              </div>
+            )}
+
             <div className="pt-6 border-t border-gray-100">
               <Button
                 size="lg"
                 className="w-full h-12 text-base font-medium bg-primary hover:bg-primary/90 text-white rounded-lg shadow-sm transition-colors"
                 disabled={!selectedStartTime || (selectedArea.pricing_type === 'jornada' && !selectedJornada)}
-                onClick={() => setStep(3)}
+                onClick={() => {
+                  if (selectedArea.pricing_type === 'jornada') {
+                    const availability = checkJornadaAvailability();
+                    if (!availability.available) {
+                      setJornadaError(availability.message || 'Horario no disponible');
+                      return;
+                    }
+                    setJornadaError(null);
+                  }
+                  setStep(3);
+                }}
               >
                 Continuar reserva <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
@@ -570,10 +963,7 @@ export default function NewReservationPage() {
                 </span>
                 <span className="font-medium">
                   {selectedArea.pricing_type === 'jornada'
-                    ? selectedJornada === 'diurna' ? 'Diurna (8am - 6pm)'
-                      : selectedJornada === 'nocturna' ? 'Nocturna (6pm - 12am)'
-                        : selectedJornada === 'ambos' ? 'Completo (Día completo)'
-                          : ''
+                    ? getJornadaScheduleText()
                     : `${selectedStartTime} - ${format(addHours(new Date(`${selectedDate}T${selectedStartTime}:00`), duration), 'HH:mm')}`
                   }
                 </span>
