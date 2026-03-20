@@ -1,17 +1,40 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { useOrganizationImages } from '@/hooks/useOrganizationImages';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Mail, CheckCircle2, Building2 } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const { slug } = useParams();
+  const [organization, setOrganization] = useState<any>(null);
+  const { cachedImages, cacheImages } = useOrganizationImages(slug);
+
+  useEffect(() => {
+    if (slug) {
+      fetchOrganization();
+    }
+  }, [slug]);
+
+  const fetchOrganization = async () => {
+    const { data } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('slug', slug)
+      .eq('subscription_status', 'active')
+      .single();
+    if (data) {
+      setOrganization(data);
+      cacheImages(data.logo_url, data.login_photo_url);
+    }
+  };
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,10 +59,10 @@ export default function ForgotPasswordPage() {
     return (
       <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
         {/* Background Image with Overlay */}
-        <div 
+        <div
           className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000"
-          style={{ 
-            backgroundImage: 'url("https://i.imgur.com/qjreDpV.jpeg")',
+          style={{
+            backgroundImage: cachedImages.login_photo_url ? `url("${cachedImages.login_photo_url}")` : 'none',
           }}
         >
           <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
@@ -67,7 +90,7 @@ export default function ForgotPasswordPage() {
           </CardContent>
           <CardFooter className="pb-10 pt-6 px-8">
             <Button asChild variant="ghost" className="w-full text-white hover:bg-white/10 hover:text-white rounded-2xl h-11 transition-all border border-white/20">
-              <Link to="/login" className="flex items-center gap-2">
+              <Link to={slug ? `/${slug}/login` : "/"} className="flex items-center gap-2">
                 <ArrowLeft className="w-4 h-4" />
                 Volver al inicio de sesión
               </Link>
@@ -81,10 +104,10 @@ export default function ForgotPasswordPage() {
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
       {/* Background Image with Overlay */}
-      <div 
+      <div
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat animate-slow-zoom"
-        style={{ 
-          backgroundImage: 'url("https://i.imgur.com/qjreDpV.jpeg")',
+        style={{
+          backgroundImage: cachedImages.login_photo_url ? `url("${cachedImages.login_photo_url}")` : 'none',
         }}
       >
         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
@@ -97,11 +120,17 @@ export default function ForgotPasswordPage() {
       <Card className="relative z-10 w-full max-w-md border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl rounded-[2.5rem] overflow-hidden animate-in fade-in zoom-in duration-500">
         <CardHeader className="space-y-1 text-center pt-10 pb-8">
           <div className="flex justify-center mb-8">
-            <img 
-              src="https://i.imgur.com/BRcipLC.png" 
-              alt="Logo" 
-              className="w-48 h-auto object-contain animate-in fade-in slide-in-from-top-6 duration-1000"
-            />
+            {organization?.logo_url || cachedImages.logo_url ? (
+              <img
+                src={organization?.logo_url || cachedImages.logo_url || ''}
+                alt="Logo"
+                className="w-48 h-auto object-contain animate-in fade-in slide-in-from-top-6 duration-1000"
+              />
+            ) : (
+              <div className="w-24 h-24 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
+                <Building2 className="h-14 w-14 text-white/80" />
+              </div>
+            )}
           </div>
           <CardTitle className="text-3xl font-bold tracking-tight text-white drop-shadow-md text-center pb-2">Recuperar contraseña</CardTitle>
           <CardDescription className="text-blue-100/90 text-base font-medium">
@@ -130,9 +159,9 @@ export default function ForgotPasswordPage() {
                 />
               </div>
             </div>
-            <Button 
-              type="submit" 
-              className="w-full h-12 mt-2 text-base font-semibold bg-primary hover:bg-primary/90 text-white rounded-2xl shadow-lg hover:shadow-primary/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]" 
+            <Button
+              type="submit"
+              className="w-full h-12 mt-2 text-base font-semibold bg-primary hover:bg-primary/90 text-white rounded-2xl shadow-lg hover:shadow-primary/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
               disabled={loading}
             >
               {loading ? (
@@ -148,7 +177,7 @@ export default function ForgotPasswordPage() {
         </CardContent>
         <CardFooter className="pb-10 pt-6 px-8">
           <Button asChild variant="ghost" className="w-full text-blue-100/80 hover:bg-white/10 hover:text-white rounded-2xl h-11 transition-all">
-            <Link to="/login" className="flex items-center justify-center gap-2">
+            <Link to={slug ? `/${slug}/login` : "/"} className="flex items-center justify-center gap-2">
               <ArrowLeft className="w-4 h-4" />
               Volver al inicio de sesión
             </Link>

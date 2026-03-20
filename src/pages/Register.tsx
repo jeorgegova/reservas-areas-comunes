@@ -1,13 +1,14 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { useOrganizationImages } from '@/hooks/useOrganizationImages';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { HabeasData } from '@/components/ui/habeas-data';
 import { AlertDialog } from '@/components/ui/alert-dialog';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, Building2 } from 'lucide-react';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -19,7 +20,40 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [isSuccessAlertOpen, setIsSuccessAlertOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<string>('');
+  const { slug } = useParams();
   const navigate = useNavigate();
+  const [currentOrg, setCurrentOrg] = useState<any>(null);
+  const { cachedImages, cacheImages } = useOrganizationImages(slug);
+
+  useEffect(() => {
+    fetchOrganizations();
+  }, [slug]);
+
+  const fetchOrganizations = async () => {
+    const { data } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('subscription_status', 'active');
+    
+    if (data) {
+      setOrganizations(data);
+      if (slug) {
+        const org = data.find(o => o.slug === slug);
+        if (org) {
+          setSelectedOrgId(org.id);
+          setCurrentOrg(org);
+          // Guardar imágenes en caché
+          cacheImages(org.logo_url, org.login_photo_url);
+        } else if (data.length > 0) {
+          setSelectedOrgId(data[0].id);
+        }
+      } else if (data.length > 0) {
+        setSelectedOrgId(data[0].id);
+      }
+    }
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +76,7 @@ export default function RegisterPage() {
             full_name: fullName,
             phone: phone,
             apartment: apartment,
+            organization_id: selectedOrgId,
             habeas_data_accepted: true,
             habeas_data_accepted_at: new Date().toISOString(),
           },
@@ -58,13 +93,14 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
+
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
       {/* Background Image with Overlay */}
       <div 
-        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat animate-slow-zoom"
+        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat animate-slow-zoom transition-all duration-1000"
         style={{ 
-          backgroundImage: 'url("https://i.imgur.com/qjreDpV.jpeg")',
+          backgroundImage: cachedImages.login_photo_url ? `url("${cachedImages.login_photo_url}")` : 'none',
         }}
       >
         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
@@ -77,17 +113,23 @@ export default function RegisterPage() {
       <Card className="relative z-10 w-full max-w-lg border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl rounded-[2.5rem] overflow-hidden animate-in fade-in zoom-in duration-500">
         <CardHeader className="space-y-1 text-center pb-6 pt-10">
           <div className="flex justify-center mb-6">
-            <img 
-              src="https://i.imgur.com/BRcipLC.png" 
-              alt="Logo" 
-              className="w-40 h-auto object-contain animate-in fade-in slide-in-from-top-6 duration-1000"
-            />
+            {currentOrg?.logo_url || cachedImages.logo_url ? (
+              <img 
+                src={currentOrg?.logo_url || cachedImages.logo_url || ''} 
+                alt="Logo" 
+                className="w-40 h-auto object-contain animate-in fade-in slide-in-from-top-6 duration-1000"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
+                <Building2 className="h-12 w-12 text-white/80" />
+              </div>
+            )}
           </div>
           <CardTitle className="text-3xl font-bold tracking-tight text-white drop-shadow-md text-center pb-2">
             Crear Cuenta
           </CardTitle>
           <CardDescription className="text-blue-100/90 text-sm font-medium">
-            Únete a la comunidad de tu conjunto residencial
+            {currentOrg ? `Únete a ${currentOrg.name}` : 'Únete a la comunidad de tu conjunto residencial'}
           </CardDescription>
         </CardHeader>
 
@@ -155,6 +197,25 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {!slug && (
+              <div className="space-y-2">
+                <Label htmlFor="organization" className="text-white font-medium ml-1">Conjunto Residencial</Label>
+                <select
+                  id="organization"
+                  value={selectedOrgId}
+                  onChange={(e) => setSelectedOrgId(e.target.value)}
+                  required
+                  className="w-full bg-white/10 border-white/20 text-white h-11 rounded-xl focus:ring-primary/50 focus:border-primary/50 transition-all duration-300 px-3 outline-none appearance-none"
+                >
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id} className="text-gray-900">
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="password" title="Mínimo 6 caracteres" className="text-white font-medium ml-1">Contraseña</Label>
               <Input
@@ -201,8 +262,7 @@ export default function RegisterPage() {
             <div className="h-px bg-white/20 flex-1"></div>
           </div>
           <div className="text-sm text-center text-blue-100/80">
-            ¿Ya tienes una cuenta?{' '}
-            <Link to="/login" className="text-white font-bold hover:underline decoration-2 underline-offset-4 decoration-primary/50 transition-all">
+            <Link to={slug ? `/${slug}/login` : "/"} className="text-white font-bold hover:underline decoration-2 underline-offset-4 decoration-primary/50 transition-all">
               Inicia sesión
             </Link>
           </div>
@@ -213,13 +273,13 @@ export default function RegisterPage() {
         open={isSuccessAlertOpen}
         onOpenChange={(open) => {
           setIsSuccessAlertOpen(open);
-          if (!open) navigate('/login');
+          if (!open) navigate(slug ? `/${slug}/login` : "/");
         }}
         title="¡Registro Exitoso!"
         description="Tu cuenta ha sido creada correctamente. Por favor, verifica tu correo electrónico para confirmar tu registro antes de iniciar sesión."
         confirmText="Ir al Login"
         showCancel={false}
-        onConfirm={() => navigate('/login')}
+        onConfirm={() => navigate(slug ? `/${slug}/login` : "/")}
       />
     </div>
   );

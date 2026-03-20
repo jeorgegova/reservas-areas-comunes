@@ -27,7 +27,7 @@ export default function NewReservationPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const { id } = useParams();
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
   const isEditing = !!id;
 
   const [step, setStep] = useState(1);
@@ -54,15 +54,17 @@ export default function NewReservationPage() {
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    checkPendingReservations();
-    fetchAreas();
-    if (isAdmin) {
-      fetchUsers();
+    if (profile?.organization_id) {
+      checkPendingReservations();
+      fetchAreas();
+      if (isAdmin) {
+        fetchUsers();
+      }
+      if (isEditing) {
+        fetchReservationToEdit();
+      }
     }
-    if (isEditing) {
-      fetchReservationToEdit();
-    }
-  }, [profile, id]);
+  }, [profile?.organization_id, id, isAdmin, isEditing]);
 
   const fetchReservationToEdit = async () => {
     setLoading(true);
@@ -71,6 +73,7 @@ export default function NewReservationPage() {
         .from('reservations')
         .select('*, common_areas(*)')
         .eq('id', id)
+        .eq('organization_id', profile?.organization_id)
         .single();
 
       if (error) throw error;
@@ -120,6 +123,7 @@ export default function NewReservationPage() {
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name, email, apartment')
+      .eq('organization_id', profile?.organization_id)
       .eq('role', 'user')
       .order('full_name');
 
@@ -139,6 +143,7 @@ export default function NewReservationPage() {
       .from('reservations')
       .select('id')
       .eq('user_id', profile.id)
+      .eq('organization_id', profile.organization_id)
       .eq('status', 'pending_payment');
 
     if (data && data.length > 0) {
@@ -147,7 +152,12 @@ export default function NewReservationPage() {
   };
 
   const fetchAreas = async () => {
-    const { data } = await supabase.from('common_areas').select('*').eq('is_active', true);
+    if (!profile?.organization_id) return;
+    const { data } = await supabase
+      .from('common_areas')
+      .select('*')
+      .eq('organization_id', profile.organization_id)
+      .eq('is_active', true);
     setAreas(data || []);
   };
 
@@ -157,6 +167,7 @@ export default function NewReservationPage() {
       .from('reservations')
       .select('start_datetime, end_datetime')
       .eq('common_area_id', areaId)
+      .eq('organization_id', profile?.organization_id)
       .in('status', ['approved', 'pending_validation', 'pending_payment']);
 
     setExistingReservations(resData || []);
@@ -166,6 +177,7 @@ export default function NewReservationPage() {
       .from('maintenance_notices')
       .select('starts_at, ends_at, severity, title, content')
       .or(`common_area_id.eq.${areaId},common_area_id.is.null`)
+      .eq('organization_id', profile?.organization_id)
       .eq('is_active', true);
 
     setActiveMaintenances(maintData || []);
@@ -324,6 +336,7 @@ export default function NewReservationPage() {
       .from('reservations')
       .select('start_datetime, end_datetime')
       .eq('common_area_id', selectedArea.id)
+      .eq('organization_id', profile?.organization_id)
       .in('status', ['approved', 'pending_validation', 'pending_payment'])
       .gte('start_datetime', monthStart.toISOString())
       .lte('start_datetime', monthEnd.toISOString());
@@ -396,8 +409,10 @@ export default function NewReservationPage() {
             start_datetime: start,
             end_datetime: end,
             total_cost: totalCost,
+            organization_id: profile?.organization_id
           })
-          .eq('id', id);
+          .eq('id', id)
+          .eq('organization_id', profile?.organization_id);
 
         if (error) throw error;
         navigate('/reservations/my');
@@ -412,6 +427,7 @@ export default function NewReservationPage() {
           start_datetime: start,
           end_datetime: end,
           total_cost: totalCost,
+          organization_id: profile?.organization_id,
           status: 'pending_payment'
         })
         .select()

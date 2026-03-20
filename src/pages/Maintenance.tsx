@@ -57,12 +57,14 @@ export default function MaintenancePage() {
   });
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [noticeToDelete, setNoticeToDelete] = useState<string | null>(null);
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
 
   useEffect(() => {
-    fetchNotices();
-    fetchAreas();
-  }, []);
+    if (profile?.organization_id) {
+      fetchNotices();
+      fetchAreas();
+    }
+  }, [profile?.organization_id]);
 
   // Cargar mantenimiento a editar cuando hay parámetro de query
   useEffect(() => {
@@ -83,6 +85,7 @@ export default function MaintenancePage() {
       .from('maintenance_notices')
       .select(`*, common_areas (name)`)
       .eq('id', id)
+      .eq('organization_id', profile?.organization_id)
       .single();
 
     if (data && !error) {
@@ -100,6 +103,7 @@ export default function MaintenancePage() {
           *,
           common_areas (name)
         `)
+        .eq('organization_id', profile?.organization_id)
         .order('created_at', { ascending: false })
         .order('is_active', { ascending: false });
 
@@ -113,9 +117,11 @@ export default function MaintenancePage() {
   };
 
   const fetchAreas = async () => {
+    if (!profile?.organization_id) return;
     const { data } = await supabase
       .from('common_areas')
       .select('id, name')
+      .eq('organization_id', profile.organization_id)
       .eq('is_active', true);
     setAreas(data || []);
   };
@@ -158,7 +164,8 @@ export default function MaintenancePage() {
       // Crear nuevo mantenimiento
       const { error } = await supabase.from('maintenance_notices').insert({
         ...newNotice,
-        common_area_id: newNotice.common_area_id || null
+        common_area_id: newNotice.common_area_id || null,
+        organization_id: profile?.organization_id
       });
       if (!error) {
         setIsAdding(false);
@@ -252,8 +259,11 @@ export default function MaintenancePage() {
   };
 
   const handleConfirmDelete = async () => {
-    if (!noticeToDelete) return;
-    await supabase.from('maintenance_notices').delete().eq('id', noticeToDelete);
+    if (!noticeToDelete || !profile?.organization_id) return;
+    await supabase.from('maintenance_notices')
+      .delete()
+      .eq('id', noticeToDelete)
+      .eq('organization_id', profile.organization_id);
     fetchNotices();
     setIsDeleteAlertOpen(false);
     setNoticeToDelete(null);
@@ -264,7 +274,8 @@ export default function MaintenancePage() {
       const { error } = await supabase
         .from('maintenance_notices')
         .update({ is_active: !currentActive })
-        .eq('id', noticeId);
+        .eq('id', noticeId)
+        .eq('organization_id', profile?.organization_id);
 
       if (error) throw error;
 

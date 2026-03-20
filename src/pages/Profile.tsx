@@ -20,6 +20,7 @@ export default function ProfilePage() {
     apartment: ''
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [organizationName, setOrganizationName] = useState<string>('');
 
   useEffect(() => {
     if (profile) {
@@ -28,8 +29,19 @@ export default function ProfilePage() {
         phone: profile.phone || '',
         apartment: profile.apartment || ''
       });
+      fetchOrgName();
     }
   }, [profile]);
+
+  const fetchOrgName = async () => {
+    if (!profile?.organization_id) return;
+    const { data } = await supabase
+      .from('organizations')
+      .select('name')
+      .eq('id', profile.organization_id)
+      .single();
+    if (data) setOrganizationName(data.name);
+  };
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +56,8 @@ export default function ProfilePage() {
         ...formData,
         updated_at: new Date().toISOString()
       })
-      .eq('id', profile.id);
+      .eq('id', profile.id)
+      .eq('organization_id', profile.organization_id);
 
     if (error) {
       setMessage({ type: 'error', text: 'Error al actualizar el perfil: ' + error.message });
@@ -74,7 +87,7 @@ export default function ProfilePage() {
         <CardHeader className="pt-4 text-center pb-2">
           <CardTitle className="text-xl font-bold text-gray-900">{profile.full_name}</CardTitle>
           <CardDescription className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-            Rol: {profile.role} • Residente de {profile.apartment || 'N/A'}
+            Rol: {profile.role} • Residente de {profile.apartment || 'N/A'} • {organizationName || 'Cargando...'}
           </CardDescription>
         </CardHeader>
 

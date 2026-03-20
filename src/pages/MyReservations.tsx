@@ -36,14 +36,19 @@ export default function MyReservationsPage() {
   const [reservationToCancel, setReservationToCancel] = useState<string | null>(null);
 
   useEffect(() => {
-    if (profile) {
+    if (profile?.organization_id) {
       fetchReservations();
       fetchAreas();
     }
-  }, [profile]);
+  }, [profile?.organization_id]);
 
   const fetchAreas = async () => {
-    const { data } = await supabase.from('common_areas').select('id, name').eq('is_active', true);
+    if (!profile?.organization_id) return;
+    const { data } = await supabase
+      .from('common_areas')
+      .select('id, name')
+      .eq('organization_id', profile.organization_id)
+      .eq('is_active', true);
     setAreas(data || []);
   };
 
@@ -56,6 +61,7 @@ export default function MyReservationsPage() {
         common_areas (name, image_url)
       `)
       .eq('user_id', profile?.id)
+      .eq('organization_id', profile?.organization_id)
       .order('created_at', { ascending: false });
 
     setReservations(data || []);
@@ -73,7 +79,8 @@ export default function MyReservationsPage() {
     const { error } = await supabase
       .from('reservations')
       .update({ status: 'cancelled' })
-      .eq('id', reservationToCancel);
+      .eq('id', reservationToCancel)
+      .eq('organization_id', profile?.organization_id);
 
     if (!error) fetchReservations();
     setIsCancelAlertOpen(false);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,7 @@ interface UserProfile {
 }
 
 export default function AdminUsersPage() {
+  const { profile } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,14 +58,18 @@ export default function AdminUsersPage() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    if (profile?.organization_id) {
+      fetchUsers();
+    }
+  }, [profile?.organization_id]);
 
   const fetchUsers = async () => {
+    if (!profile?.organization_id) return;
     setLoading(true);
     const { data } = await supabase
       .from('profiles')
       .select('*')
+      .eq('organization_id', profile.organization_id)
       .order('full_name', { ascending: true });
     setUsers(data || []);
     setLoading(false);
@@ -73,7 +79,11 @@ export default function AdminUsersPage() {
     if (!roleChangeUser) return;
     const newRole = roleChangeUser.role === 'admin' ? 'user' : 'admin';
     
-    await supabase.from('profiles').update({ role: newRole }).eq('id', roleChangeUser.id);
+    await supabase
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', roleChangeUser.id)
+      .eq('organization_id', profile?.organization_id);
     fetchUsers();
     setIsRoleAlertOpen(false);
     setRoleChangeUser(null);
@@ -82,7 +92,11 @@ export default function AdminUsersPage() {
   const handleDeleteUser = async () => {
     if (!deletingUser) return;
     
-    await supabase.from('profiles').delete().eq('id', deletingUser.id);
+    await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', deletingUser.id)
+      .eq('organization_id', profile?.organization_id);
     fetchUsers();
     setIsDeleteAlertOpen(false);
     setDeletingUser(null);
@@ -112,7 +126,8 @@ export default function AdminUsersPage() {
         phone: editForm.phone,
         role: editForm.role
       })
-      .eq('id', editingUser.id);
+      .eq('id', editingUser.id)
+      .eq('organization_id', profile?.organization_id);
     
     if (!error) {
       fetchUsers();

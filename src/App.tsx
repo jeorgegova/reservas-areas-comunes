@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { useEffect, useRef } from 'react';
 import LoginPage from './pages/Login';
 import RegisterPage from './pages/Register';
 import ForgotPasswordPage from './pages/ForgotPassword';
@@ -11,6 +12,7 @@ import MyReservationsPage from './pages/MyReservations';
 import AdminReservationsPage from './pages/admin/AdminReservations';
 import AdminAreasPage from './pages/admin/AdminAreas';
 import AdminUsersPage from './pages/admin/AdminUsers';
+import SuperAdminOrganizations from './pages/super-admin/Organizations';
 import ProfilePage from './pages/Profile';
 import MaintenancePage from './pages/Maintenance';
 import PaymentMockPage from './pages/PaymentMock';
@@ -19,10 +21,57 @@ const PrivateRoute = ({ children, adminOnly = false }: { children: React.ReactNo
   const { profile, loading } = useAuth();
 
   if (loading) return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
-  if (!profile) return <Navigate to="/login" />;
-  if (adminOnly && profile.role !== 'admin') return <Navigate to="/dashboard" />;
+  if (!profile) return <Navigate to="/" />; // Redirect to root for login
+  if (adminOnly && profile.role !== 'admin' && profile.role !== 'super_admin') return <Navigate to="/dashboard" />;
 
   return <>{children}</>;
+};
+
+const SuperAdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { profile, loading } = useAuth();
+
+  if (loading) return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
+  if (!profile || profile.role !== 'super_admin') return <Navigate to="/" />; // Redirect to root if not super_admin
+
+  return <>{children}</>;
+};
+
+// Componente que redirige al último slug usado o a super-admin
+const RootLoader = () => {
+  const navigate = useNavigate();
+  const { profile, loading } = useAuth();
+  const hasProcessed = useRef(false);
+
+  useEffect(() => {
+    // Solo procesar una vez
+    if (hasProcessed.current) return;
+    hasProcessed.current = true;
+
+    if (!loading) {
+      if (profile) {
+        // Usuario autenticado
+        if (profile.role === 'super_admin') {
+          navigate('/super-admin/organizations', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
+      } else {
+        // Usuario no autenticado - ir a login
+        const lastSlug = localStorage.getItem('lastOrganizationSlug');
+        if (lastSlug) {
+          navigate(`/${lastSlug}/login`, { replace: true });
+        } else {
+          navigate('/super-admin/organizations', { replace: true });
+        }
+      }
+    }
+  }, [profile, loading, navigate]);
+
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+    </div>
+  );
 };
 
 function App() {
@@ -30,11 +79,21 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* Root - muestra pantalla de carga o redirige */}
+          <Route path="/" element={<RootLoader />} />
 
+          {/* Organization Routes - muestra login */}
+          <Route path="/:slug" element={<LoginPage />} />
+          <Route path="/:slug/login" element={<LoginPage />} />
+          <Route path="/:slug/register" element={<RegisterPage />} />
+          <Route path="/:slug/forgot-password" element={<ForgotPasswordPage />} />
 
+          {/* Legacy/Global Redirects */}
+          <Route path="/login" element={<Navigate to="/" />} />
+          <Route path="/register" element={<Navigate to="/" />} />
+          <Route path="/forgot-password" element={<Navigate to="/" />} />
+
+          {/* Standard Routes (session based) */}
           <Route
             path="/dashboard"
             element={
@@ -118,6 +177,17 @@ function App() {
           />
 
           <Route
+            path="/super-admin/organizations"
+            element={
+              <SuperAdminRoute>
+                <DashboardLayout>
+                  <SuperAdminOrganizations />
+                </DashboardLayout>
+              </SuperAdminRoute>
+            }
+          />
+
+          <Route
             path="/maintenance"
             element={
               <PrivateRoute>
@@ -146,7 +216,9 @@ function App() {
               </PrivateRoute>
             }
           />
-          <Route path="/" element={<Navigate to="/dashboard" />} />
+
+          {/* Catch-all to root */}
+          <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

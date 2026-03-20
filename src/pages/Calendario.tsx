@@ -50,7 +50,7 @@ export default function Calendario() {
     const isAdminPage = location.pathname === '/admin';
     // Only show analytics on /admin route, not on /dashboard
     const showAnalytics = isAdminPage;
-    const isAdmin = profile?.role === 'admin';
+    const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
 
     // Estado para filtros
     const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
@@ -98,6 +98,7 @@ export default function Calendario() {
             const { data: areasData } = await supabase
                 .from('common_areas')
                 .select('*')
+                .eq('organization_id', profile?.organization_id)
                 .eq('is_active', true);
 
             // Fetch reservations within the visible range if provided
@@ -107,6 +108,7 @@ export default function Calendario() {
                     *,
                     common_areas (name)
                 `)
+                .eq('organization_id', profile?.organization_id)
                 .in('status', ['approved', 'pending_validation', 'pending_payment']);
 
             if (startRange && endRange) {
@@ -124,6 +126,7 @@ export default function Calendario() {
                     *,
                     common_areas (name)
                 `)
+                .eq('organization_id', profile?.organization_id)
                 .eq('is_active', true);
 
             if (startRange && endRange) {
@@ -152,6 +155,7 @@ export default function Calendario() {
                     *,
                     common_areas (name)
                 `)
+                .eq('organization_id', profile?.organization_id)
                 .gte('created_at', twelveMonthsAgo.toISOString());
 
             if (error) throw error;
@@ -160,12 +164,14 @@ export default function Calendario() {
             const { data: usersData } = await supabase
                 .from('profiles')
                 .select('id')
+                .eq('organization_id', profile?.organization_id)
                 .eq('role', 'resident');
 
             // Obtener áreas
             const { data: areasData } = await supabase
                 .from('common_areas')
-                .select('*');
+                .select('*')
+                .eq('organization_id', profile?.organization_id);
 
             // Procesar datos para gráficos
             const processedData = processAdminData(allReservations || [], areasData || [], usersData?.length || 0);

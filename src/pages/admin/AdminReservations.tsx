@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,16 +22,20 @@ import {
 } from 'lucide-react';
 
 export default function AdminReservationsPage() {
+  const { profile } = useAuth();
   const [reservations, setReservations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
-    fetchReservations();
-  }, [statusFilter]);
+    if (profile?.organization_id) {
+      fetchReservations();
+    }
+  }, [statusFilter, profile?.organization_id]);
 
   const fetchReservations = async () => {
+    if (!profile?.organization_id) return;
     setLoading(true);
     let query = supabase
       .from('reservations')
@@ -39,6 +44,7 @@ export default function AdminReservationsPage() {
         profiles (full_name, apartment, email),
         common_areas (name)
       `)
+      .eq('organization_id', profile.organization_id)
       .order('created_at', { ascending: false });
 
     if (statusFilter !== 'all') {
@@ -57,7 +63,8 @@ export default function AdminReservationsPage() {
         status: newStatus,
         updated_at: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss")
       })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('organization_id', profile?.organization_id);
 
     if (!error) fetchReservations();
   };

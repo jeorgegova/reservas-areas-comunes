@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,6 +66,7 @@ function CurrencyInput({ value, onChange, className, placeholder }: { value: num
 }
 
 export default function AdminAreasPage() {
+  const { profile } = useAuth();
   const [areas, setAreas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -88,22 +90,55 @@ export default function AdminAreasPage() {
   });
 
   useEffect(() => {
-    fetchAreas();
-  }, []);
+    if (profile?.organization_id) {
+      fetchAreas();
+    }
+  }, [profile?.organization_id]);
 
   const fetchAreas = async () => {
+    if (!profile?.organization_id) return;
     setLoading(true);
-    const { data } = await supabase.from('common_areas').select('*').order('created_at', { ascending: false });
+    const { data } = await supabase
+      .from('common_areas')
+      .select('*')
+      .eq('organization_id', profile.organization_id)
+      .order('created_at', { ascending: false });
     setAreas(data || []);
     setLoading(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const orgId = profile?.organization_id;
+
+    // Filtrar solo los campos que existen en la tabla common_areas
+    const areaData = {
+      name: currentArea.name,
+      description: currentArea.description || null,
+      max_hours_per_reservation: currentArea.max_hours_per_reservation || 4,
+      cost_per_hour: currentArea.cost_per_hour || 0,
+      pricing_type: currentArea.pricing_type || 'hourly',
+      cost_jornada_diurna: currentArea.cost_jornada_diurna || 0,
+      cost_jornada_nocturna: currentArea.cost_jornada_nocturna || 0,
+      cost_jornada_ambos: currentArea.cost_jornada_ambos || 0,
+      jornada_hours_diurna: currentArea.jornada_hours_diurna || 10,
+      jornada_hours_nocturna: currentArea.jornada_hours_nocturna || 6,
+      image_url: currentArea.image_url || null,
+      is_active: currentArea.is_active !== false,
+      organization_id: orgId
+    };
+
     if (currentArea.id) {
-      await supabase.from('common_areas').update(currentArea).eq('id', currentArea.id);
+      await supabase
+        .from('common_areas')
+        .update(areaData)
+        .eq('id', currentArea.id)
+        .eq('organization_id', orgId);
     } else {
-      await supabase.from('common_areas').insert(currentArea);
+      await supabase
+        .from('common_areas')
+        .insert(areaData);
     }
     setIsEditing(false);
     fetchAreas();
@@ -115,7 +150,11 @@ export default function AdminAreasPage() {
   };
 
   const handleToggleActive = async (area: any) => {
-    await supabase.from('common_areas').update({ is_active: !area.is_active }).eq('id', area.id);
+    await supabase
+      .from('common_areas')
+      .update({ is_active: !area.is_active })
+      .eq('id', area.id)
+      .eq('organization_id', profile?.organization_id);
     fetchAreas();
   };
 
@@ -132,7 +171,7 @@ export default function AdminAreasPage() {
             <p className="text-gray-500 text-sm">Configura los espacios disponibles para reserva.</p>
           </div>
         </div>
-        <Button 
+        <Button
           onClick={() => {
             setCurrentArea({
               name: '', description: '', max_hours_per_reservation: 4, cost_per_hour: 0,
@@ -143,7 +182,7 @@ export default function AdminAreasPage() {
               image_url: '', is_active: true
             });
             setIsEditing(true);
-          }} 
+          }}
           className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 font-semibold h-11 px-5 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
         >
           <Plus className="w-4 h-4 mr-2" /> Nueva Área

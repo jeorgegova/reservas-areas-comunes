@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useOrganizationImages } from '@/hooks/useOrganizationImages';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { LogIn } from 'lucide-react';
+import { LogIn, Building2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -14,15 +16,47 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { profile, loading: authLoading } = useAuth();
+  const { slug } = useParams();
   const navigate = useNavigate();
+  const [organization, setOrganization] = useState<any>(null);
+  const { cachedImages, cacheImages } = useOrganizationImages(slug);
 
-  // Redirigir si ya está autenticado
   useEffect(() => {
-    if (profile && !authLoading) {
-      console.log('LoginPage: Perfil detectado, redirigiendo a /dashboard');
-      navigate('/dashboard');
+    if (slug) {
+      fetchOrganization();
     }
-  }, [profile, authLoading, navigate]);
+  }, [slug]);
+
+  const fetchOrganization = async () => {
+    const { data } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('slug', slug)
+      .eq('subscription_status', 'active')
+      .single();
+    if (data) {
+      setOrganization(data);
+      // Guardar imágenes en caché
+      cacheImages(data.logo_url, data.login_photo_url);
+    }
+  };
+
+  // Redirigir si ya está autenticado - solo ejecutar una vez
+  useEffect(() => {
+    // Solo redirigir si el componente está montado y el usuario está autenticado
+    if (profile && !authLoading) {
+      // Usar replace para evitar que el historial de navegación cause problemas
+      if (profile.role === 'super_admin') {
+        navigate('/super-admin/organizations', { replace: true });
+      } else {
+        // Guardar el slug cuando inicia sesión exitosamente
+        if (slug) {
+          localStorage.setItem('lastOrganizationSlug', slug);
+        }
+        navigate('/dashboard', { replace: true });
+      }
+    }
+  }, [profile, authLoading]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,8 +76,7 @@ export default function LoginPage() {
       }
 
       console.log('Inicio de sesión exitoso, usuario:', data.user?.id);
-      console.log('Navegando a /dashboard...');
-      navigate('/dashboard');
+      // La redirección real se maneja en el useEffect arriba basado en el perfil
     } catch (err: any) {
       console.error('Captura de error en Login.tsx:', err);
       setError(err.message || 'Error al iniciar sesión');
@@ -56,33 +89,50 @@ export default function LoginPage() {
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
       {/* Background Image with Overlay */}
       <div
-        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat animate-slow-zoom"
+        className={cn(
+          "absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-all duration-1000",
+          !slug ? "bg-white" : "animate-slow-zoom"
+        )}
         style={{
-          backgroundImage: 'url("https://i.imgur.com/qjreDpV.jpeg")',
+          backgroundImage: slug && cachedImages.login_photo_url ? `url("${cachedImages.login_photo_url}")` : 'none',
         }}
       >
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
+        {slug && <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>}
       </div>
 
       {/* Decorative elements */}
       <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-[-10%] left-[-5%] w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
 
-      <Card className="relative z-10 w-full max-w-md border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl rounded-[2.5rem] overflow-hidden animate-in fade-in zoom-in duration-500">
+      <Card className={cn(
+        "relative z-10 w-full max-w-md shadow-2xl rounded-[2.5rem] overflow-hidden animate-in fade-in zoom-in duration-500",
+        !slug ? "bg-white border-gray-100" : "border-white/20 bg-white/10 backdrop-blur-xl"
+      )}>
         <CardHeader className="space-y-1 text-center pb-8 pt-10">
-          <div className="flex justify-center mb-8">
-            <img
-              src="https://i.imgur.com/BRcipLC.png"
-              alt="Logo"
-              className="w-48 h-auto object-contain animate-in fade-in slide-in-from-top-6 duration-1000"
-            />
-          </div>
-          <CardTitle className="text-3xl font-bold tracking-tight text-white drop-shadow-md text-center pb-2">
-            Iniciar Sesión
+          {slug && (
+            <div className="flex justify-center mb-8">
+              {organization?.logo_url || cachedImages.logo_url ? (
+                <img
+                  src={organization?.logo_url || cachedImages.logo_url || ''}
+                  alt="Logo"
+                  className="w-48 h-auto object-contain animate-in fade-in slide-in-from-top-6 duration-1000"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
+                  <Building2 className="h-14 w-14 text-white/80" />
+                </div>
+              )}
+            </div>
+          )}
+          <CardTitle className={cn(
+            "text-3xl font-bold tracking-tight text-center pb-2",
+            !slug ? "text-gray-900" : "text-white drop-shadow-md"
+          )}>
+            {organization?.name || 'Administración Central'}
           </CardTitle>
         </CardHeader>
 
-        <CardContent className="px-8">
+        <CardContent className={cn("px-8", !slug && "pb-12")}>
           <form onSubmit={handleLogin} className="space-y-5">
             {error && (
               <div className="bg-destructive/20 text-white text-sm p-3 rounded-xl border border-destructive/30 backdrop-blur-md animate-in slide-in-from-top-2">
@@ -91,7 +141,7 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-white font-medium ml-1">Correo electrónico</Label>
+              <Label htmlFor="email" className={cn("font-medium ml-1", !slug ? "text-gray-700" : "text-white")}>Correo electrónico</Label>
               <Input
                 id="email"
                 type="email"
@@ -99,16 +149,21 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="bg-white/10 border-white/20 text-white placeholder:text-white/40 h-12 rounded-2xl focus:ring-primary/50 focus:border-primary/50 transition-all duration-300"
+                className={cn(
+                  "h-12 rounded-2xl transition-all duration-300",
+                  !slug
+                    ? "bg-gray-50 border-gray-200 text-gray-900 focus:ring-indigo-500/20"
+                    : "bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:ring-primary/50"
+                )}
               />
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between ml-1">
-                <Label htmlFor="password" className="text-white font-medium">Contraseña</Label>
+                <Label htmlFor="password" className={cn("font-medium", !slug ? "text-gray-700" : "text-white")}>Contraseña</Label>
                 <Link
-                  to="/forgot-password"
-                  className="text-xs font-medium text-blue-200 hover:text-white hover:underline transition-colors"
+                  to={slug ? `/${slug}/forgot-password` : "/forgot-password"}
+                  className={cn("text-xs font-medium transition-colors", !slug ? "text-indigo-600 hover:text-indigo-700" : "text-blue-200 hover:text-white hover:underline")}
                 >
                   ¿Olvidaste tu contraseña?
                 </Link>
@@ -120,43 +175,56 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="bg-white/10 border-white/20 text-white placeholder:text-white/40 h-12 rounded-2xl focus:ring-primary/50 focus:border-primary/50 transition-all duration-300"
+                className={cn(
+                  "h-12 rounded-2xl transition-all duration-300",
+                  !slug
+                    ? "bg-gray-50 border-gray-200 text-gray-900 focus:ring-indigo-500/20"
+                    : "bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:ring-primary/50"
+                )}
               />
             </div>
 
             <Button
               type="submit"
-              className="w-full h-12 mt-2 text-base font-semibold bg-primary hover:bg-primary/90 text-white rounded-2xl shadow-lg hover:shadow-primary/20 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+              className={cn(
+                "w-full h-12 mt-8 text-base font-semibold rounded-2xl shadow-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 border-0",
+                !slug
+                  ? "bg-[#2563eb] text-white shadow-blue-500/20"
+                  : "bg-primary hover:bg-primary/90 text-white shadow-primary/20"
+              )}
               disabled={loading}
+              style={!slug ? { backgroundColor: '#2563eb', color: 'white', opacity: loading ? 0.7 : 1 } : {}}
             >
               {loading ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 text-white">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Iniciando...
+                  <span className="text-white">Iniciando...</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <LogIn className="w-5 h-5" />
-                  Iniciar Sesión
+                <div className="flex items-center gap-2 text-white">
+                  <LogIn className="w-5 h-5 shrink-0 text-white fill-none" />
+                  <span className="text-white">Iniciar Sesión</span>
                 </div>
               )}
             </Button>
           </form>
         </CardContent>
 
-        <CardFooter className="flex flex-col space-y-4 pb-10 px-8">
-          <div className="w-full flex items-center justify-center gap-4 py-2">
-            <div className="h-px bg-white/20 flex-1"></div>
-            <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest">o</span>
-            <div className="h-px bg-white/20 flex-1"></div>
-          </div>
-          <div className="text-sm text-center text-blue-100/80">
-            ¿No tienes una cuenta?{' '}
-            <Link to="/register" className="text-white font-bold hover:underline decoration-2 underline-offset-4 decoration-primary/50 transition-all">
-              Regístrate ahora
-            </Link>
-          </div>
-        </CardFooter>
+        {slug && (
+          <CardFooter className="flex flex-col space-y-4 pb-10 px-8">
+            <div className="w-full flex items-center justify-center gap-4 py-2">
+              <div className={cn("h-px flex-1", !slug ? "bg-gray-100" : "bg-white/20")}></div>
+              <span className={cn("text-[10px] font-bold uppercase tracking-widest", !slug ? "text-gray-400" : "text-white/40")}>o</span>
+              <div className={cn("h-px flex-1", !slug ? "bg-gray-100" : "bg-white/20")}></div>
+            </div>
+            <div className={cn("text-sm text-center", !slug ? "text-gray-500" : "text-blue-100/80")}>
+              ¿No tienes una cuenta?{' '}
+              <Link to={slug ? `/${slug}/register` : "/register"} className={cn("font-bold hover:underline decoration-2 underline-offset-4 transition-all", !slug ? "text-indigo-600 decoration-indigo-500/50" : "text-white decoration-primary/50")}>
+                Regístrate ahora
+              </Link>
+            </div>
+          </CardFooter>
+        )}
       </Card>
     </div>
   );
