@@ -11,9 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import {
     Filter,
     Calendar,
-    Clock,
     DollarSign,
-    TrendingUp,
     Bell,
     Users,
     ClipboardCheck,
@@ -70,13 +68,6 @@ export default function Calendario() {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
-    const [stats, setStats] = useState({
-        total_reservations: 0,
-        next_reservation: null as any,
-        monthly_revenue: 0,
-        monthly_revenue_goal: 0,
-        active_users: 0
-    });
 
     // Estado para datos del admin
     const [adminStats, setAdminStats] = useState({
