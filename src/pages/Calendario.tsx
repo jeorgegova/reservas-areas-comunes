@@ -6,7 +6,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, detoxTime, formatDate } from '@/lib/utils';
+import { formatCurrency, detoxTime, formatDate, formatDateTimeISO } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import {
     Filter,
@@ -117,7 +117,7 @@ export default function Calendario() {
 
             const { data: resData } = await resQuery;
 
-            // Fetch notices for the visible range
+            // Fetch notices for the visible range (only active)
             let noticeQuery = supabase
                 .from('maintenance_notices')
                 .select(`
@@ -997,8 +997,12 @@ export default function Calendario() {
                         <CardContent className="p-4">
                             {notices && notices.length > 0 ? (
                                 <div className="space-y-3">
-                                    {notices.slice(0, 3).map((notice: any) => (
-                                        <div key={notice.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                                    {notices.filter((n: any) => n.is_active !== false).slice(0, 3).map((notice: any) => (
+                                        <div
+                                            key={notice.id}
+                                            className={`bg-gray-50 rounded-lg p-3 border border-gray-100 ${isAdmin ? 'cursor-pointer hover:bg-gray-100 transition-colors' : ''}`}
+                                            onClick={() => isAdmin && navigate('/maintenance')}
+                                        >
                                             <p className="text-xs font-medium text-gray-900">
                                                 {notice.common_areas?.name || 'General'}
                                             </p>
@@ -1006,7 +1010,7 @@ export default function Calendario() {
                                                 {notice.title}
                                             </p>
                                             <p className="text-[10px] text-gray-400 mt-1">
-                                                {format(new Date(notice.starts_at), 'dd/MM/yyyy HH:mm')} - {format(new Date(notice.ends_at), 'dd/MM/yyyy HH:mm')}
+                                                {formatDateTimeISO(notice.starts_at)} - {formatDateTimeISO(notice.ends_at)}
                                             </p>
                                         </div>
                                     ))}

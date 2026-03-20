@@ -45,3 +45,14 @@ export function startOfMonth(date: Date) {
 export function endOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 }
+
+export function formatDateTimeISO(isoString: string) {
+  if (!isoString) return '';
+  // Extrae la fecha y hora directamente de la cadena ISO sin conversión de zona horaria
+  // Formato de entrada: "2024-01-15T10:30:00.000Z" o "2024-01-15T10:30:00+00:00"
+  // Salida: "15/01/2024 10:30"
+  const match = isoString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) return isoString;
+  const [, year, month, day, hour, minute] = match;
+  return `${day}/${month}/${year} ${hour}:${minute}`;
+}

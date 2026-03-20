@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -14,8 +15,10 @@ import {
   MapPin,
   Clock,
   X,
-  Wrench
+  Wrench,
+  Edit
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { formatDate } from '@/lib/utils';
 import { AlertDialog } from '@/components/ui/alert-dialog';
 
@@ -30,16 +33,20 @@ interface Notice {
   common_areas?: {
     name: string;
   };
+  is_active: boolean;
   created_at: string;
 }
 
 export default function MaintenancePage() {
   const { profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [areas, setAreas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
+  const editNoticeId = searchParams.get('edit');
   const [newNotice, setNewNotice] = useState({
     title: '',
     content: '',
@@ -50,11 +57,39 @@ export default function MaintenancePage() {
   });
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [noticeToDelete, setNoticeToDelete] = useState<string | null>(null);
+  const isAdmin = profile?.role === 'admin';
 
   useEffect(() => {
     fetchNotices();
     fetchAreas();
   }, []);
+
+  // Cargar mantenimiento a editar cuando hay parámetro de query
+  useEffect(() => {
+    if (editNoticeId && isAdmin) {
+      const noticeToEdit = notices.find(n => n.id === editNoticeId);
+      if (noticeToEdit) {
+        setEditingNotice(noticeToEdit);
+        setIsAdding(true);
+      } else {
+        // Si no se encuentra en el estado, buscar en la base de datos
+        fetchNoticeToEdit(editNoticeId);
+      }
+    }
+  }, [editNoticeId, notices, isAdmin]);
+
+  const fetchNoticeToEdit = async (id: string) => {
+    const { data, error } = await supabase
+      .from('maintenance_notices')
+      .select(`*, common_areas (name)`)
+      .eq('id', id)
+      .single();
+
+    if (data && !error) {
+      setEditingNotice(data);
+      setIsAdding(true);
+    }
+  };
 
   const fetchNotices = async () => {
     setLoading(true);
@@ -65,7 +100,8 @@ export default function MaintenancePage() {
           *,
           common_areas (name)
         `)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .order('is_active', { ascending: false });
 
       if (error) throw error;
       setNotices(data || []);
@@ -87,22 +123,87 @@ export default function MaintenancePage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const { error } = await supabase.from('maintenance_notices').insert(newNotice);
-    if (!error) {
-      setIsAdding(false);
-      fetchNotices();
-      setNewNotice({
-        title: '',
-        content: '',
-        severity: 'info',
-        starts_at: '',
-        ends_at: '',
-        common_area_id: ''
-      });
+
+    if (editingNotice) {
+      // Actualizar mantenimiento existente
+      const { error } = await supabase
+        .from('maintenance_notices')
+        .update({
+          title: newNotice.title,
+          content: newNotice.content,
+          severity: newNotice.severity,
+          starts_at: newNotice.starts_at,
+          ends_at: newNotice.ends_at,
+          common_area_id: newNotice.common_area_id || null
+        })
+        .eq('id', editingNotice.id);
+
+      if (!error) {
+        setIsAdding(false);
+        setEditingNotice(null);
+        fetchNotices();
+        setSearchParams({});
+        setNewNotice({
+          title: '',
+          content: '',
+          severity: 'info',
+          starts_at: '',
+          ends_at: '',
+          common_area_id: ''
+        });
+      } else {
+        console.error('Error updating notice:', error);
+      }
     } else {
-      console.error('Error creating notice:', error);
+      // Crear nuevo mantenimiento
+      const { error } = await supabase.from('maintenance_notices').insert({
+        ...newNotice,
+        common_area_id: newNotice.common_area_id || null
+      });
+      if (!error) {
+        setIsAdding(false);
+        fetchNotices();
+        setNewNotice({
+          title: '',
+          content: '',
+          severity: 'info',
+          starts_at: '',
+          ends_at: '',
+          common_area_id: ''
+        });
+      } else {
+        console.error('Error creating notice:', error);
+      }
     }
     setIsSubmitting(false);
+  };
+
+  // Inicializar formulario cuando se entra en modo edición
+  useEffect(() => {
+    if (editingNotice) {
+      setNewNotice({
+        title: editingNotice.title || '',
+        content: editingNotice.content || '',
+        severity: editingNotice.severity || 'info',
+        starts_at: editingNotice.starts_at ? editingNotice.starts_at.slice(0, 16) : '',
+        ends_at: editingNotice.ends_at ? editingNotice.ends_at.slice(0, 16) : '',
+        common_area_id: editingNotice.common_area_id || ''
+      });
+    }
+  }, [editingNotice]);
+
+  const handleCloseForm = () => {
+    setIsAdding(false);
+    setEditingNotice(null);
+    setSearchParams({});
+    setNewNotice({
+      title: '',
+      content: '',
+      severity: 'info',
+      starts_at: '',
+      ends_at: '',
+      common_area_id: ''
+    });
   };
 
   const getSeverityStyles = (severity: string) => {
@@ -158,7 +259,23 @@ export default function MaintenancePage() {
     setNoticeToDelete(null);
   };
 
-  const isAdmin = profile?.role === 'admin';
+  const toggleNoticeActive = async (noticeId: string, currentActive: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('maintenance_notices')
+        .update({ is_active: !currentActive })
+        .eq('id', noticeId);
+
+      if (error) throw error;
+
+      // Update local state
+      setNotices(notices.map(notice =>
+        notice.id === noticeId ? { ...notice, is_active: !currentActive } : notice
+      ));
+    } catch (error) {
+      console.error('Error toggling notice active status:', error);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -178,8 +295,8 @@ export default function MaintenancePage() {
           </p>
         </div>
         {isAdmin && (
-          <Button 
-            onClick={() => setIsAdding(true)} 
+          <Button
+            onClick={() => setIsAdding(true)}
             className="w-full md:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-11 px-5 rounded-xl shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="mr-2 h-4 w-4" /> Nuevo Aviso
@@ -193,13 +310,17 @@ export default function MaintenancePage() {
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-100">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-gray-900 tracking-tight">Nuevo Comunicado</h2>
-                <p className="mt-0.5 text-sm text-gray-500">Publica una noticia para todos los residentes</p>
+                <h2 className="text-lg font-bold text-gray-900 tracking-tight">
+                  {editingNotice ? 'Editar Comunicado' : 'Nuevo Comunicado'}
+                </h2>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  {editingNotice ? 'Modifica los datos del comunicado' : 'Publica una noticia para todos los residentes'}
+                </p>
               </div>
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 size="icon"
-                onClick={() => setIsAdding(false)} 
+                onClick={handleCloseForm}
                 className="h-8 w-8 rounded-full hover:bg-gray-200"
               >
                 <X className="h-4 w-4" />
@@ -254,7 +375,7 @@ export default function MaintenancePage() {
                       onClick={() => setNewNotice({ ...newNotice, severity: sev })}
                       className={`
                         h-11 px-4 rounded-lg border-2 font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2
-                        ${newNotice.severity === sev 
+                        ${newNotice.severity === sev
                           ? getSeverityStyles(sev).border + ' ' + getSeverityStyles(sev).bg
                           : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50'
                         }
@@ -316,28 +437,37 @@ export default function MaintenancePage() {
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setIsAdding(false)} 
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseForm}
                   className="h-11 px-5 font-medium rounded-xl border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
                 >
                   Cancelar
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={isSubmitting}
                   className="h-11 px-6 font-semibold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 text-primary-foreground transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:hover:scale-100"
                 >
                   {isSubmitting ? (
                     <>
                       <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                      Publicando...
+                      {editingNotice ? 'Guardando...' : 'Publicando...'}
                     </>
                   ) : (
                     <>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Publicar Aviso
+                      {editingNotice ? (
+                        <>
+                          <Plus className="mr-2 h-4 w-4" />
+                          Guardar Cambios
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="mr-2 h-4 w-4" />
+                          Publicar Aviso
+                        </>
+                      )}
                     </>
                   )}
                 </Button>
@@ -352,7 +482,7 @@ export default function MaintenancePage() {
         <h2 className="text-lg font-semibold text-gray-800 px-1">
           {notices.length > 0 ? `(${notices.length}) Avisos Recientes` : 'Avisos Recientes'}
         </h2>
-        
+
         {loading ? (
           <div className="flex justify-center py-16">
             <div className="flex flex-col items-center gap-3">
@@ -367,13 +497,13 @@ export default function MaintenancePage() {
             </div>
             <h3 className="text-lg font-semibold text-gray-700 mb-1">No hay avisos publicados</h3>
             <p className="text-sm text-gray-500 text-center max-w-sm">
-              {isAdmin 
+              {isAdmin
                 ? "Crea el primer aviso para informar a los residentes sobre mantenimientos o cierres."
                 : "No hay avisos de mantenimiento activos en este momento."}
             </p>
             {isAdmin && (
-              <Button 
-                onClick={() => setIsAdding(true)} 
+              <Button
+                onClick={() => setIsAdding(true)}
                 className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground font-medium h-10 px-5 rounded-xl shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Plus className="mr-2 h-4 w-4" /> Crear Primer Aviso
@@ -385,13 +515,13 @@ export default function MaintenancePage() {
             {notices.map((notice) => {
               const styles = getSeverityStyles(notice.severity);
               return (
-                <Card 
-                  key={notice.id} 
-                  className={`group border-none shadow-sm hover:shadow-lg hover:shadow-gray-200/50 transition-all duration-300 hover:-translate-y-1 overflow-hidden`}
+                <Card
+                  key={notice.id}
+                  className={`group border-none shadow-sm hover:shadow-lg hover:shadow-gray-200/50 transition-all duration-300 hover:-translate-y-1 overflow-hidden ${notice.is_active === false ? 'opacity-60' : ''}`}
                 >
                   {/* Severity Indicator Bar */}
                   <div className={`h-1.5 w-full ${notice.severity === 'critical' ? 'bg-red-500' : notice.severity === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`} />
-                  
+
                   <CardHeader className="p-5 pb-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3 flex-1">
@@ -422,14 +552,31 @@ export default function MaintenancePage() {
                         </div>
                       </div>
                       {isAdmin && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => handleDeleteClick(notice.id)}
-                          className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500 hover:text-red-600" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setSearchParams({ edit: notice.id })}
+                              className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-blue-50"
+                            >
+                              <Edit className="w-4 h-4 text-blue-500 hover:text-blue-600" />
+                            </Button>
+                            <Switch
+                              checked={notice.is_active ?? true}
+                              onCheckedChange={() => toggleNoticeActive(notice.id, notice.is_active ?? true)}
+                              className="mx-auto"
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteClick(notice.id)}
+                              className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500 hover:text-red-600" />
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </CardHeader>
