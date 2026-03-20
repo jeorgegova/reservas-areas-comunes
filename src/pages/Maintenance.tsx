@@ -17,6 +17,7 @@ import {
   Wrench
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 
 interface Notice {
   id: string;
@@ -47,6 +48,8 @@ export default function MaintenancePage() {
     ends_at: '',
     common_area_id: ''
   });
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [noticeToDelete, setNoticeToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     fetchNotices();
@@ -142,10 +145,17 @@ export default function MaintenancePage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este aviso?')) return;
-    await supabase.from('maintenance_notices').delete().eq('id', id);
+  const handleDeleteClick = (id: string) => {
+    setNoticeToDelete(id);
+    setIsDeleteAlertOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!noticeToDelete) return;
+    await supabase.from('maintenance_notices').delete().eq('id', noticeToDelete);
     fetchNotices();
+    setIsDeleteAlertOpen(false);
+    setNoticeToDelete(null);
   };
 
   const isAdmin = profile?.role === 'admin';
@@ -415,7 +425,7 @@ export default function MaintenancePage() {
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          onClick={() => handleDelete(notice.id)}
+                          onClick={() => handleDeleteClick(notice.id)}
                           className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-red-50"
                         >
                           <Trash2 className="w-4 h-4 text-red-500 hover:text-red-600" />
@@ -444,6 +454,17 @@ export default function MaintenancePage() {
           </div>
         )}
       </div>
+
+      <AlertDialog
+        open={isDeleteAlertOpen}
+        onOpenChange={setIsDeleteAlertOpen}
+        title="Eliminar Aviso"
+        description="¿Estás seguro de que deseas eliminar este aviso? Esta acción no se puede deshacer."
+        confirmText="Sí, eliminar"
+        cancelText="No, mantener"
+        onConfirm={handleConfirmDelete}
+        variant="destructive"
+      />
     </div>
   );
 }

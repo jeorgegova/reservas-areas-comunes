@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -19,19 +19,25 @@ import {
   Moon,
   Calendar
 } from 'lucide-react';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { format, addHours, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isToday, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default function NewReservationPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const { id } = useParams();
   const isAdmin = profile?.role === 'admin';
+  const isEditing = !!id;
 
   const [step, setStep] = useState(1);
   const [areas, setAreas] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedArea, setSelectedArea] = useState<any>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [searchParams] = useSearchParams();
+  const initialDate = searchParams.get('date');
+  
+  const [selectedDate, setSelectedDate] = useState<string>(initialDate || format(new Date(), 'yyyy-MM-dd'));
   const [selectedStartTime, setSelectedStartTime] = useState<string>('');
   const [duration, setDuration] = useState<number>(1);
   // Tipo de jornada seleccionada: 'diurna' | 'nocturna' | 'ambos' | null
@@ -44,6 +50,8 @@ export default function NewReservationPage() {
 
   const [loading, setLoading] = useState(false);
   const [blockingError, setBlockingError] = useState<string | null>(null);
+  const [isErrorAlertOpen, setIsErrorAlertOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     checkPendingReservations();
@@ -51,7 +59,62 @@ export default function NewReservationPage() {
     if (isAdmin) {
       fetchUsers();
     }
-  }, [profile]);
+    if (isEditing) {
+      fetchReservationToEdit();
+    }
+  }, [profile, id]);
+
+  const fetchReservationToEdit = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('*, common_areas(*)')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        // Verificar que sea el dueño o sea admin
+        if (data.user_id !== profile?.id && !isAdmin) {
+          setBlockingError('No tienes permiso para editar esta reserva.');
+          return;
+        }
+
+        // Restricción: Solo pendiente_validation (como pidió el usuario)
+        if (data.status !== 'pending_validation' && !isAdmin) {
+          setBlockingError('Solo se pueden editar reservas con estado Pendiente Validación.');
+          return;
+        }
+
+        setSelectedArea(data.common_areas);
+        const startDate = new Date(data.start_datetime);
+        setSelectedDate(format(startDate, 'yyyy-MM-dd'));
+        setSelectedStartTime(format(startDate, 'HH:mm'));
+        
+        // Calcular duración en horas
+        const endDate = new Date(data.end_datetime);
+        const diffMs = endDate.getTime() - startDate.getTime();
+        const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+        setDuration(diffHours);
+
+        // Identificar jornada si aplica
+        const hour = startDate.getHours();
+        if (hour >= 8 && hour < 18) {
+           // Simplificación: si empieza en el rango diurno, marcar como tal
+           // En una app real esto sería más preciso basándose en la configuración del área
+        }
+
+        setStep(2); // Ir directo al paso de horario
+      }
+    } catch (error: any) {
+      console.error('Error fetching reservation for edit:', error);
+      setErrorMessage('No se pudo cargar la reserva para editar.');
+      setIsErrorAlertOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchUsers = async () => {
     const { data } = await supabase
@@ -325,6 +388,22 @@ export default function NewReservationPage() {
     const reservationUserId = (isAdmin && selectedUserId && selectedUserId.length > 0) ? selectedUserId : profile.id;
 
     try {
+      if (isEditing) {
+        const { error } = await supabase
+          .from('reservations')
+          .update({
+            common_area_id: selectedArea.id,
+            start_datetime: start,
+            end_datetime: end,
+            total_cost: totalCost,
+          })
+          .eq('id', id);
+
+        if (error) throw error;
+        navigate('/reservations/my');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('reservations')
         .insert({
@@ -343,7 +422,8 @@ export default function NewReservationPage() {
       // Redirect to specific payment mock page
       navigate(`/payment/${data.id}`);
     } catch (error: any) {
-      alert('Error al crear la reserva: ' + error.message);
+      setErrorMessage(error.message || 'Error al crear la reserva');
+      setIsErrorAlertOpen(true);
     } finally {
       setLoading(false);
     }
@@ -996,6 +1076,16 @@ export default function NewReservationPage() {
           </CardFooter>
         </Card>
       )}
+      <AlertDialog
+        open={isErrorAlertOpen}
+        onOpenChange={setIsErrorAlertOpen}
+        title="Error en la Reserva"
+        description={errorMessage}
+        confirmText="Entendido"
+        showCancel={false}
+        onConfirm={() => setIsErrorAlertOpen(false)}
+        variant="destructive"
+      />
     </div>
   );
 }

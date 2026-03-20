@@ -65,6 +65,16 @@ function App() {
               </PrivateRoute>
             }
           />
+          <Route
+            path="/reservations/edit/:id"
+            element={
+              <PrivateRoute>
+                <DashboardLayout>
+                  <NewReservationPage />
+                </DashboardLayout>
+              </PrivateRoute>
+            }
+          />
 
           <Route
             path="/admin"

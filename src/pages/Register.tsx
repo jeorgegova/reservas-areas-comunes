@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { HabeasData } from '@/components/ui/habeas-data';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import { UserPlus } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -16,6 +17,7 @@ export default function RegisterPage() {
   const [apartment, setApartment] = useState('');
   const [habeasDataAccepted, setHabeasDataAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isSuccessAlertOpen, setIsSuccessAlertOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -49,10 +51,9 @@ export default function RegisterPage() {
       if (error) throw error;
       
       // Redirect to login or show success message
-      alert('Registro exitoso. Por favor, verifica tu correo electrónico.');
-      navigate('/login');
-    } catch (err: any) {
-      setError(err.message || 'Error al registrarse');
+      setIsSuccessAlertOpen(true);
+    } catch (error: any) {
+      setError(error.message || 'Error al registrarse');
     } finally {
       setLoading(false);
     }
@@ -207,6 +208,19 @@ export default function RegisterPage() {
           </div>
         </CardFooter>
       </Card>
+
+      <AlertDialog
+        open={isSuccessAlertOpen}
+        onOpenChange={(open) => {
+          setIsSuccessAlertOpen(open);
+          if (!open) navigate('/login');
+        }}
+        title="¡Registro Exitoso!"
+        description="Tu cuenta ha sido creada correctamente. Por favor, verifica tu correo electrónico para confirmar tu registro antes de iniciar sesión."
+        confirmText="Ir al Login"
+        showCancel={false}
+        onConfirm={() => navigate('/login')}
+      />
     </div>
   );
 }

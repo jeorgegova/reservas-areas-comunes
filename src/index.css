@@ -23,6 +23,18 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-fade-in: fade-in 0.3s ease-in-out;
+  --animate-zoom-in: zoom-in 0.2s ease-out;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes zoom-in {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
 }
 
 @layer base {
@@ -105,4 +117,148 @@
   .animate-slow-zoom {
     animation: slowZoom 20s ease-in-out infinite alternate;
   }
+}
+
+/* FullCalendar Modernization */
+.compact-calendar .fc {
+  --fc-button-bg-color: hsl(var(--primary));
+  --fc-button-border-color: hsl(var(--primary));
+  --fc-button-hover-bg-color: hsl(var(--primary) / 0.9);
+  --fc-button-hover-border-color: hsl(var(--primary) / 0.9);
+  --fc-button-active-bg-color: hsl(var(--primary) / 0.8);
+  --fc-button-active-border-color: hsl(var(--primary) / 0.8);
+  --fc-event-bg-color: hsl(var(--primary));
+  --fc-event-border-color: hsl(var(--primary));
+  --fc-today-bg-color: hsl(var(--primary) / 0.05);
+  font-family: inherit;
+}
+
+.compact-calendar .fc .fc-button {
+  @apply rounded-xl font-bold px-4 py-2 transition-all shadow-sm transform active:scale-95;
+  text-transform: capitalize;
+}
+
+.compact-calendar .fc .fc-toolbar-title {
+  @apply text-lg sm:text-2xl font-bold tracking-tight text-gray-900;
+}
+
+.compact-calendar .fc .fc-col-header-cell-cushion {
+  @apply py-3 text-xs sm:text-sm font-semibold text-gray-500 uppercase;
+}
+
+.compact-calendar .fc .fc-daygrid-day-number {
+  @apply p-2 text-xs sm:text-sm font-medium;
+}
+
+.compact-calendar .fc .fc-event {
+  @apply rounded-md border-none shadow-sm px-1.5 py-0.5 m-0.5 cursor-pointer transition-transform hover:scale-[1.02];
+}
+
+.compact-calendar .fc .fc-event-title {
+  @apply font-semibold text-[10px] sm:text-xs overflow-hidden text-ellipsis;
+}
+
+/* Mobile Specific Optimizations */
+@media (max-width: 640px) {
+  .compact-calendar .fc .fc-toolbar {
+    @apply flex-col gap-3 items-center;
+  }
+  
+  .compact-calendar .fc .fc-toolbar-chunk {
+    @apply flex justify-center w-full;
+  }
+
+  .compact-calendar .fc .fc-header-toolbar {
+    margin-bottom: 1.5rem !important;
+  }
+
+  .compact-calendar .fc .fc-button {
+    @apply px-2 py-1 text-xs;
+  }
+
+  .fc-view-harness {
+    height: auto !important;
+  }
+
+  .fc-daygrid-day-frame {
+    padding: 0 !important;
+    min-height: 20px !important;
+  }
+  
+  @media (min-width: 640px) {
+    .fc-daygrid-day-frame {
+      min-height: 28px !important;
+    }
+  }
+
+  .fc-daygrid-day-top {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: flex-end !important;
+  }
+
+  /* Centrar puntos solo en móvil */
+  @media (max-width: 639px) {
+    .fc-daygrid-day-events {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      justify-content: center !important;
+      gap: 1px !important;
+      margin-top: -8px !important;
+    }
+  }
+
+  /* Alineación normal en escritorio */
+  @media (min-width: 640px) {
+    .fc-daygrid-day-events {
+      display: block !important;
+      margin-top: 0 !important;
+    }
+  }
+
+  .fc-daygrid-event-harness {
+    margin: 0 !important;
+  }
+
+  .fc-event {
+    margin: 1px 0 !important;
+    background: transparent !important;
+    border: none !important;
+  }
+
+  /* Números y nombres de días en negrita y negro */
+  .fc-col-header-cell-cushion,
+  .fc-daygrid-day-number {
+    font-weight: 700 !important;
+    color: #111827 !important;
+    text-decoration: none !important;
+    padding: 1px 4px !important;
+  }
+
+  .fc-col-header-cell-cushion {
+    font-size: 10px !important;
+    text-transform: uppercase !important;
+  }
+
+  /* Estilos específicos para vistas de tiempo (semana/día) */
+  .fc-timegrid-event {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid #f3f4f6 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+  }
+
+  .fc-event-main {
+    padding: 0 !important;
+  }
+
+  .fc-event-main-frame {
+    padding: 0 !important;
+  }
+}
+
+/* Tooltip Premium Style */
+.calendar-tooltip {
+  @apply animate-fade-in animate-zoom-in;
+  backdrop-filter: blur(8px);
+  background-color: rgba(255, 255, 255, 0.95) !important;
 }

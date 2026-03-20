@@ -22,7 +22,8 @@ import {
     Activity,
     Target
 } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import {
     BarChart,
     Bar,
@@ -45,6 +46,7 @@ import { es } from 'date-fns/locale';
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export default function Calendario() {
+    const navigate = useNavigate();
     const { profile } = useAuth();
     const location = useLocation();
     const isAdminPage = location.pathname === '/admin';
@@ -60,6 +62,14 @@ export default function Calendario() {
     const [areas, setAreas] = useState<any[]>([]);
     const [reservations, setReservations] = useState<any[]>([]);
     const [notices, setNotices] = useState<any[]>([]);
+    const [calendarRange, setCalendarRange] = useState<{ start: string; end: string } | null>(null);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
     const [stats, setStats] = useState({
         total_reservations: 0,
         next_reservation: null as any,
@@ -81,84 +91,61 @@ export default function Calendario() {
     });
 
     useEffect(() => {
-        fetchResidentData();
+        if (calendarRange) {
+            fetchResidentData(calendarRange.start, calendarRange.end);
+        } else {
+            fetchResidentData();
+        }
+
         if (showAnalytics) {
             fetchAdminData();
         }
-    }, [showAnalytics, selectedMonth, selectedAreaId]);
+    }, [showAnalytics, selectedMonth, selectedAreaId, calendarRange]);
 
-    const fetchResidentData = async () => {
+    const fetchResidentData = async (startRange?: string, endRange?: string) => {
         try {
             const { data: areasData } = await supabase
                 .from('common_areas')
                 .select('*')
                 .eq('is_active', true);
 
-            const { data: resData } = await supabase
+            // Fetch reservations within the visible range if provided
+            let resQuery = supabase
                 .from('reservations')
                 .select(`
-              *,
-              common_areas (name)
-            `)
+                    *,
+                    common_areas (name)
+                `)
                 .in('status', ['approved', 'pending_validation', 'pending_payment']);
 
-            const { data: noticeData } = await supabase
+            if (startRange && endRange) {
+                resQuery = resQuery
+                    .gte('start_datetime', startRange)
+                    .lte('start_datetime', endRange); // Checking start_datetime for the range
+            }
+
+            const { data: resData } = await resQuery;
+
+            // Fetch notices for the visible range
+            let noticeQuery = supabase
                 .from('maintenance_notices')
                 .select(`
-              *,
-              common_areas (name)
-            `)
+                    *,
+                    common_areas (name)
+                `)
                 .eq('is_active', true);
 
-            // Get current month's start and end
-            const now = new Date();
-            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-            const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+            if (startRange && endRange) {
+                noticeQuery = noticeQuery
+                    .gte('starts_at', startRange)
+                    .lte('ends_at', endRange);
+            }
 
-            // Get this month's approved reservations for revenue
-            const { data: monthlyResData } = await supabase
-                .from('reservations')
-                .select('total_cost, start_datetime')
-                .eq('status', 'approved')
-                .gte('start_datetime', monthStart)
-                .lte('start_datetime', monthEnd);
-
-            // Get total active users count
-            const { count: usersCount } = await supabase
-                .from('profiles')
-                .select('id', { count: 'exact', head: true });
-
-            // Get total reservations this month
-            const { count: reservationsCount } = await supabase
-                .from('reservations')
-                .select('id', { count: 'exact', head: true })
-                .gte('created_at', monthStart)
-                .lte('created_at', monthEnd);
-
-            // Calculate next reservation
-            const upcomingReservations = (resData || [])
-                .filter(r => r.status === 'approved' || r.status === 'pending_validation')
-                .sort((a, b) => new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime());
-            const nextReservation = upcomingReservations.length > 0 ? upcomingReservations[0] : null;
-
-            // Calculate monthly revenue
-            const monthlyRevenue = (monthlyResData || []).reduce((sum, r) => sum + (r.total_cost || 0), 0);
-
-            // Calculate revenue goal percentage (assuming 100000 goal)
-            const revenueGoal = 100000;
-            const goalPercentage = Math.round((monthlyRevenue / revenueGoal) * 100);
+            const { data: noticeData } = await noticeQuery;
 
             setAreas(areasData || []);
             setReservations(resData || []);
             setNotices(noticeData || []);
-
-            setStats({
-                total_reservations: reservationsCount || 0,
-                next_reservation: nextReservation,
-                monthly_revenue: monthlyRevenue,
-                monthly_revenue_goal: goalPercentage,
-                active_users: usersCount || 0
-            });
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         }
@@ -287,11 +274,11 @@ export default function Calendario() {
 
     const getStatusLabel = (status: string) => {
         const labels: Record<string, string> = {
-            'approved': 'Aprobadas',
+            'approved': 'Aprobada',
             'pending_validation': 'Pendiente Validación',
             'pending_payment': 'Pendiente Pago',
-            'rejected': 'Rechazadas',
-            'cancelled': 'Canceladas'
+            'rejected': 'Rechazada',
+            'cancelled': 'Cancelada'
         };
         return labels[status] || status;
     };
@@ -366,7 +353,7 @@ export default function Calendario() {
     // Renderizar vista de Admin
     if (showAnalytics) {
         return (
-            <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="space-y-6 animate-fade-in duration-500">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
@@ -716,7 +703,7 @@ export default function Calendario() {
 
     // Renderizar vista de residente (sin cambios)
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="space-y-6 animate-fade-in duration-500">
             <div>
                 <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
                     {isAdmin ? 'Dashboard del Conjunto' : 'Calendario'}
@@ -726,57 +713,7 @@ export default function Calendario() {
                 </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="border-none shadow-sm bg-white">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Total Reservas</h3>
-                        <Calendar className="w-4 h-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-gray-900">{stats.total_reservations}</div>
-                        <p className="text-xs text-green-600 mt-1 font-medium">+12% este mes</p>
-                    </CardContent>
-                </Card>
 
-                <Card className="border-none shadow-sm bg-white">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Próxima Reserva</h3>
-                        <Clock className="w-4 h-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold text-gray-900 truncate">
-                            {stats.next_reservation ? formatDate(stats.next_reservation.start_datetime) : 'N/A'}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">Siguiente evento programado</p>
-                    </CardContent>
-                </Card>
-
-                {isAdmin && (
-                    <>
-                        <Card className="border-none shadow-sm bg-white">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Ingresos Mes</h3>
-                                <DollarSign className="w-4 h-4 text-primary" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold text-gray-900">{formatCurrency(stats.monthly_revenue)}</div>
-                                <p className="text-xs text-blue-600 mt-1 font-medium">Meta: {stats.monthly_revenue_goal}% alcanzada</p>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="border-none shadow-sm bg-white">
-                            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Usuarios Activos</h3>
-                                <TrendingUp className="w-4 h-4 text-primary" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold text-gray-900">{stats.active_users}</div>
-                                <p className="text-xs text-gray-500 mt-1">Residentes verificados</p>
-                            </CardContent>
-                        </Card>
-                    </>
-                )}
-            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-3 space-y-6">
@@ -786,50 +723,150 @@ export default function Calendario() {
                                 <h3 className="text-lg font-bold text-gray-900">Calendario de Actividades</h3>
                                 <p className="text-xs text-gray-500">Visualización de disponibilidad por área</p>
                             </div>
-                            <div className="flex items-center gap-3 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                                <Filter className="w-3.5 h-3.5 text-gray-400" />
+                            <div className="flex items-center gap-2 bg-gray-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-gray-100">
+                                <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400" />
                                 <select
                                     value={selectedAreaId}
                                     onChange={(e) => setSelectedAreaId(e.target.value)}
-                                    className="text-xs font-bold bg-transparent border-none focus:ring-0 outline-none text-gray-700 cursor-pointer"
+                                    className="text-[10px] sm:text-xs font-bold bg-transparent border-none focus:ring-0 outline-none text-gray-700 cursor-pointer"
                                 >
-                                    <option value="all">Todas las áreas</option>
+                                    <option value="all">Todas</option>
                                     {areas.map(area => (
                                         <option key={area.id} value={area.id}>{area.name}</option>
                                     ))}
                                 </select>
                             </div>
                         </CardHeader>
-                        <CardContent className="p-6">
-                            <div className="calendar-container compact-calendar">
+                        <CardContent className="p-1 sm:p-2">
+                            <div className="calendar-container compact-calendar overflow-hidden">
                                 <FullCalendar
                                     plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                                     initialView="dayGridMonth"
                                     headerToolbar={{
-                                        left: 'prev,next today',
+                                        left: isMobile ? 'prev,next' : 'prev,next today',
                                         center: 'title',
                                         right: 'dayGridMonth,timeGridWeek,timeGridDay'
                                     }}
                                     buttonText={{
                                         today: 'Hoy',
                                         month: 'Mes',
-                                        week: 'Semana',
+                                        week: 'Sem',
                                         day: 'Día'
+                                    }}
+                                    height="auto"
+                                    aspectRatio={isMobile ? 1.35 : 3}
+                                    fixedWeekCount={false}
+                                    dayMaxEvents={isMobile ? 3 : 2}
+                                    eventContent={(eventInfo) => {
+                                        const isReservation = eventInfo.event.extendedProps.type === 'reservation';
+                                        const statusColor = isReservation
+                                            ? getStatusColor(eventInfo.event.extendedProps.status)
+                                            : getSeverityColor(eventInfo.event.extendedProps.severity);
+
+                                        const isMonthView = eventInfo.view.type === 'dayGridMonth';
+
+                                        // Vista mes en móvil: solo punto
+                                        if (isMonthView && isMobile) {
+                                            return (
+                                                <div className="flex items-center justify-center h-full w-full py-0.5">
+                                                    <div
+                                                        style={{ backgroundColor: statusColor }}
+                                                        className="w-1.5 h-1.5 rounded-full shadow-sm hover:scale-125 transition-transform"
+                                                    />
+                                                </div>
+                                            );
+                                        }
+
+                                        // Vista mes en PC: punto + hora + título (truncado)
+                                        if (isMonthView) {
+                                            return (
+                                                <div className="flex items-center gap-1 overflow-hidden h-full px-0.5">
+                                                    <div style={{ backgroundColor: statusColor }} className="w-1.5 h-1.5 rounded-full flex-shrink-0" />
+                                                    <span className="text-[9px] font-bold text-gray-900 whitespace-nowrap">{eventInfo.timeText}</span>
+                                                    <span className="truncate text-[9px] font-medium text-gray-600">{eventInfo.event.title}</span>
+                                                </div>
+                                            );
+                                        }
+
+                                        // Vistas de semana y día: contenido completo
+                                        return (
+                                            <div className="flex flex-col gap-0.5 p-1 h-full border-l-2" style={{ borderLeftColor: statusColor }}>
+                                                <span className="text-[10px] font-bold text-gray-900 border-b border-gray-100/50 pb-0.5">
+                                                    {eventInfo.timeText}
+                                                </span>
+                                                <span className="text-[11px] font-medium text-gray-700 leading-tight">
+                                                    {eventInfo.event.title}
+                                                </span>
+                                            </div>
+                                        );
+                                    }}
+                                    dayCellContent={(arg) => {
+                                        const now = new Date();
+                                        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                                        const isPast = arg.date < today;
+                                        const isBookable = !isPast;
+
+                                        return (
+                                            <div
+                                                onClick={() => {
+                                                    if (isMobile && isBookable) {
+                                                        const dateStr = format(arg.date, 'yyyy-MM-dd');
+                                                        navigate(`/reservations/new?date=${dateStr}`);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "relative w-full h-full min-h-[35px] sm:min-h-[40px] p-0.5 flex flex-col justify-between group",
+                                                    isMobile && isBookable && "cursor-pointer active:bg-gray-50"
+                                                )}
+                                            >
+                                                <div className="flex justify-end w-full p-0.5">
+                                                    <span className={cn(
+                                                        "text-[10px] sm:text-xs font-bold text-gray-900 px-1",
+                                                        arg.isToday && "bg-primary text-white w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-full"
+                                                    )}>
+                                                        {arg.dayNumberText}
+                                                    </span>
+                                                </div>
+
+                                                {isBookable && !isMobile && (
+                                                    <div className="absolute bottom-0 right-0 p-0.5">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const dateStr = format(arg.date, 'yyyy-MM-dd');
+                                                                navigate(`/reservations/new?date=${dateStr}`);
+                                                            }}
+                                                            className="w-4 h-4 text-gray-300 transition-all opacity-0 group-hover:opacity-100 hover:text-primary"
+                                                            title="Agregar reserva"
+                                                        >
+                                                            <span className="text-xs font-bold">+</span>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    }}
+                                    datesSet={(dateInfo) => {
+                                        setCalendarRange({
+                                            start: dateInfo.startStr,
+                                            end: dateInfo.endStr
+                                        });
                                     }}
                                     events={allEvents}
                                     eventDidMount={(info) => {
                                         const eventId = info.event.id;
-                                        
+
                                         // Eliminar tooltip previo si existe para este evento
                                         const existingTooltip = document.getElementById(`tooltip-${eventId}`);
                                         if (existingTooltip) {
                                             existingTooltip.remove();
                                         }
-                                        
+
                                         // Crear tooltip con información del evento
                                         const tooltip = document.createElement('div');
                                         tooltip.id = `tooltip-${eventId}`;
-                                        
+                                        tooltip.className = 'calendar-tooltip';
+
                                         const props = info.event.extendedProps;
                                         const start = info.event.start;
                                         const end = info.event.end;
@@ -837,36 +874,38 @@ export default function Calendario() {
 
                                         if (props.type === 'reservation') {
                                             tooltip.innerHTML = `
-                                                <div style="padding: 10px; min-width: 180px; background: white; border-radius: 8px;">
-                                                    <div style="font-weight: 600; font-size: 13px; color: #1f2937; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 6px;">
-                                                        📅 Reserva
+                                                <div style="padding: 12px; min-width: 200px;">
+                                                    <div style="font-weight: 700; font-size: 14px; color: #111827; border-bottom: 1px solid #f3f4f6; padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                                                        <span style="background: ${getStatusColor(props.status)}; width: 8px; height: 8px; border-radius: 50%;"></span>
+                                                        Reserva
                                                     </div>
-                                                    <div style="font-size: 12px; color: #374151; margin-bottom: 4px;">
-                                                        <strong>Área:</strong> ${eventTitle}
+                                                    <div style="font-size: 13px; color: #374151; margin-bottom: 6px;">
+                                                        <strong style="color: #6b7280; font-size: 11px; text-transform: uppercase;">Área</strong><br/> ${eventTitle}
                                                     </div>
-                                                    <div style="font-size: 11px; color: #6b7280;">
-                                                        <strong>Estado:</strong> ${props.status}
+                                                    <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px;">
+                                                        <strong style="color: #6b7280; font-size: 11px; text-transform: uppercase;">Estado</strong><br/> ${getStatusLabel(props.status)}
                                                     </div>
-                                                    <div style="font-size: 11px; color: #6b7280;">
-                                                        <strong>Hora:</strong> ${start ? start.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''} - ${end ? end.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                    <div style="font-size: 12px; color: #4b5563;">
+                                                        <strong style="color: #6b7280; font-size: 11px; text-transform: uppercase;">Horario</strong><br/> ${start ? format(start, 'HH:mm') : ''} - ${end ? format(end, 'HH:mm') : ''}
                                                     </div>
                                                 </div>
                                             `;
                                         } else {
-                                            const observation = props.content ? `<div style="font-size: 11px; color: #6b7280; margin-top: 4px;"><strong>Observación:</strong> ${props.content}</div>` : '';
+                                            const observation = props.content ? `<div style="font-size: 12px; color: #4b5563; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e5e7eb;"><strong>Observación:</strong> ${props.content}</div>` : '';
                                             tooltip.innerHTML = `
-                                                <div style="padding: 10px; min-width: 200px; background: white; border-radius: 8px;">
-                                                    <div style="font-weight: 600; font-size: 13px; color: #1f2937; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 6px;">
-                                                        🔧 Mantenimiento
+                                                <div style="padding: 12px; min-width: 220px;">
+                                                    <div style="font-weight: 700; font-size: 14px; color: #111827; border-bottom: 1px solid #f3f4f6; padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                                                        <span style="background: ${getSeverityColor(props.severity)}; width: 8px; height: 8px; border-radius: 50%;"></span>
+                                                        Mantenimiento
                                                     </div>
                                                     <div style="font-size: 12px; color: #374151; margin-bottom: 4px;">
-                                                        <strong>Área:</strong> ${props.area}
+                                                         <strong style="color: #6b7280; font-size: 11px; text-transform: uppercase;">Área</strong><br/> ${props.area}
                                                     </div>
                                                     <div style="font-size: 11px; color: #6b7280;">
-                                                        <strong>Severidad:</strong> ${props.severity}
+                                                         <strong style="color: #6b7280; font-size: 11px; text-transform: uppercase;">Severidad</strong><br/> ${props.severity === 'critical' ? 'Crítica' : props.severity === 'warning' ? 'Advertencia' : 'Normal'}
                                                     </div>
                                                     <div style="font-size: 11px; color: #6b7280;">
-                                                        <strong>Hora:</strong> ${start ? start.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''} - ${end ? end.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                         <strong style="color: #6b7280; font-size: 11px; text-transform: uppercase;">Horario</strong><br/> ${start ? format(start, 'HH:mm') : ''} - ${end ? format(end, 'HH:mm') : ''}
                                                     </div>
                                                     ${observation}
                                                 </div>
@@ -875,20 +914,51 @@ export default function Calendario() {
 
                                         tooltip.style.cssText = `
                                             position: fixed;
-                                            z-index: 99999;
+                                            z-index: 9999;
                                             background: white;
-                                            border: 2px solid #6366f1;
-                                            border-radius: 8px;
-                                            box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+                                            border: 1px solid #e5e7eb;
+                                            border-radius: 12px;
+                                            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
                                             display: none;
                                             pointer-events: none;
+                                            border-left: 4px solid ${props.type === 'reservation' ? getStatusColor(props.status) : getSeverityColor(props.severity)};
                                         `;
 
                                         document.body.appendChild(tooltip);
 
                                         const updateTooltipPosition = (e: MouseEvent) => {
-                                            tooltip.style.left = (e.clientX + 15) + 'px';
-                                            tooltip.style.top = (e.clientY + 15) + 'px';
+                                            const padding = 10;
+
+                                            // Get viewport dimensions
+                                            const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+                                            const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+
+                                            // Get tooltip dimensions
+                                            const rect = tooltip.getBoundingClientRect();
+                                            const tw = rect.width || 240;
+                                            const th = rect.height || 180;
+
+                                            let left = e.clientX + padding;
+                                            let top = e.clientY + padding;
+
+                                            // Check right overflow
+                                            if (left + tw > vw - padding) {
+                                                left = e.clientX - tw - padding;
+                                            }
+
+                                            // Check left overflow (if it's still overflowing left after moving)
+                                            if (left < padding) left = padding;
+
+                                            // Check bottom overflow
+                                            if (top + th > vh - padding) {
+                                                top = e.clientY - th - padding;
+                                            }
+
+                                            // Check top overflow
+                                            if (top < padding) top = padding;
+
+                                            tooltip.style.left = `${left}px`;
+                                            tooltip.style.top = `${top}px`;
                                         };
 
                                         // Funciones de handler con referencias estables
@@ -910,7 +980,6 @@ export default function Calendario() {
                                         info.el.addEventListener('mousemove', handleMouseMove);
                                         info.el.addEventListener('mouseleave', handleMouseLeave);
                                     }}
-                                    height="auto"
                                     locale="es"
                                     timeZone="local"
                                     eventTimeFormat={{
@@ -969,6 +1038,7 @@ export default function Calendario() {
                     </Button>
                 </div>
             </div>
+
         </div>
     );
 }

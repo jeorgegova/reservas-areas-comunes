@@ -12,6 +12,7 @@ interface AlertDialogProps {
   cancelText?: string;
   onConfirm: () => void;
   variant?: 'default' | 'destructive';
+  showCancel?: boolean;
 }
 
 export function AlertDialog({
@@ -22,7 +23,8 @@ export function AlertDialog({
   confirmText = 'Confirmar',
   cancelText = 'Cancelar',
   onConfirm,
-  variant = 'default'
+  variant = 'default',
+  showCancel = true
 }: AlertDialogProps) {
   if (!open) return null;
 
@@ -57,13 +59,15 @@ export function AlertDialog({
             </div>
           </div>
           <div className="flex gap-3 px-6 pb-6">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              className="flex-1 h-11 rounded-xl border-gray-200 font-medium hover:bg-gray-50"
-            >
-              {cancelText}
-            </Button>
+            {showCancel && (
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="flex-1 h-11 rounded-xl border-gray-200 font-medium hover:bg-gray-50"
+              >
+                {cancelText}
+              </Button>
+            )}
             <Button
               onClick={() => {
                 onConfirm();
