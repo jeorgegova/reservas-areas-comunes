@@ -11,8 +11,7 @@ import {
 } from '@/lib/utils';
 import { format } from 'date-fns';
 import { 
-  Search, 
-  MoreHorizontal,
+  Search,
   Calendar,
   MapPin,
   Clock,
