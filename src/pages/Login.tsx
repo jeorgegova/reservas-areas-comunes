@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogIn, Building2 } from 'lucide-react';
-import { formatCurrency, cn, translateAuthError } from '@/lib/utils';
+import { cn, translateAuthError } from '@/lib/utils';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');

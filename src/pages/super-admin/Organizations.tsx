@@ -23,14 +23,13 @@ import {
   MapPin,
   TrendingUp,
   Users,
-  CreditCard,
   PieChart,
   BarChart3,
   Map as MapIcon,
   Download
 } from 'lucide-react';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
-import { differenceInDays, parseISO, isPast, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { differenceInDays, parseISO, isPast } from 'date-fns';
 import {
   BarChart,
   Bar,
@@ -643,7 +642,7 @@ export default function SuperAdminOrganizations() {
                     contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                   />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                    { [0,1,2,3].map((entry, index) => (
+                    { [0,1,2,3].map((index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Bar>
