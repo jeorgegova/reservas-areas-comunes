@@ -14,11 +14,11 @@ import {
     DollarSign,
     Bell,
     Users,
-    ClipboardCheck,
     BarChart3,
     PieChart,
     Activity,
-    Target
+    Target,
+    AlertCircle
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -75,6 +75,8 @@ export default function Calendario() {
         totalRevenue: 0,
         activeUsers: 0,
         occupancyRate: 0,
+        reservationsToday: 0,
+        pendingValidation: 0,
         reservationsByStatus: [] as any[],
         reservationsByArea: [] as any[],
         monthlyReservations: [] as any[],
@@ -147,25 +149,26 @@ export default function Calendario() {
 
     const fetchAdminData = async () => {
         try {
-            // Obtener reservas del últimos 12 meses
+            // Obtener reservas de los últimos 12 meses con información del perfil
             const twelveMonthsAgo = subMonths(new Date(), 12);
             const { data: allReservations, error } = await supabase
                 .from('reservations')
                 .select(`
                     *,
-                    common_areas (name)
+                    common_areas (name),
+                    profiles:user_id (full_name)
                 `)
                 .eq('organization_id', profile?.organization_id)
                 .gte('created_at', twelveMonthsAgo.toISOString());
 
             if (error) throw error;
 
-            // Obtener usuarios activos
+            // Obtener usuarios residentes
             const { data: usersData } = await supabase
                 .from('profiles')
                 .select('id')
                 .eq('organization_id', profile?.organization_id)
-                .eq('role', 'resident');
+                .eq('role', 'user');
 
             // Obtener áreas
             const { data: areasData } = await supabase
@@ -182,14 +185,35 @@ export default function Calendario() {
     };
 
     const processAdminData = (reservations: any[], areas: any[], userCount: number) => {
-        // Filtrar por mes seleccionado si aplica
-        const filteredReservations = selectedAreaId !== 'all'
-            ? reservations.filter(r => r.common_area_id === selectedAreaId)
-            : reservations;
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
 
-        // Reservas por estado
+        // Filtrar por mes seleccionado si aplica
+        const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+        const selectedMonthStart = new Date(selYear, selMonth - 1, 1);
+        const selectedMonthEnd = endOfMonth(selectedMonthStart);
+
+        const filteredByMonth = reservations.filter(res => {
+            const resDate = new Date(res.start_datetime);
+            return resDate >= selectedMonthStart && resDate <= selectedMonthEnd;
+        });
+
+        const filteredByArea = selectedAreaId !== 'all'
+            ? filteredByMonth.filter(r => r.common_area_id === selectedAreaId)
+            : filteredByMonth;
+
+        // Reservas hoy (independiente del filtro de mes)
+        const reservationsToday = reservations.filter(res => 
+            res.start_datetime >= startOfToday && res.start_datetime <= endOfToday
+        ).length;
+
+        // Pagos pendientes de validar (independiente del filtro de mes)
+        const pendingValidation = reservations.filter(res => res.status === 'pending_validation').length;
+
+        // Reservas por estado (del mes seleccionado)
         const statusCount: Record<string, number> = {};
-        filteredReservations.forEach(res => {
+        filteredByArea.forEach(res => {
             statusCount[res.status] = (statusCount[res.status] || 0) + 1;
         });
         const reservationsByStatus = Object.entries(statusCount).map(([name, value]) => ({
@@ -197,9 +221,9 @@ export default function Calendario() {
             value
         }));
 
-        // Reservas por área
+        // Reservas por área (del mes seleccionado)
         const areaCount: Record<string, number> = {};
-        filteredReservations.forEach(res => {
+        filteredByArea.forEach(res => {
             const areaName = res.common_areas?.name || 'Desconocida';
             areaCount[areaName] = (areaCount[areaName] || 0) + 1;
         });
@@ -208,25 +232,24 @@ export default function Calendario() {
             .sort((a, b) => b.value - a.value)
             .slice(0, 8);
 
-        // Reservas por mes (últimos 12 meses)
+        // Reservas por mes (últimos 12 meses - usa todas las reservas)
         const months = eachMonthOfInterval({
             start: subMonths(new Date(), 11),
             end: new Date()
         });
 
         const monthlyData = months.map(month => {
-            const monthStart = startOfMonth(month);
-            const monthEnd = endOfMonth(month);
-            const count = filteredReservations.filter(res => {
-                const resDate = new Date(res.created_at);
-                return resDate >= monthStart && resDate <= monthEnd;
+            const mStart = startOfMonth(month);
+            const mEnd = endOfMonth(month);
+            const count = reservations.filter(res => {
+                const resDate = new Date(res.start_datetime);
+                return resDate >= mStart && resDate <= mEnd;
             }).length;
 
-            // Calcular ingresos del mes
-            const monthRevenue = filteredReservations
+            const monthRevenue = reservations
                 .filter(res => {
-                    const resDate = new Date(res.created_at);
-                    return resDate >= monthStart && resDate <= monthEnd && res.status === 'approved';
+                    const resDate = new Date(res.start_datetime);
+                    return resDate >= mStart && resDate <= mEnd && res.status === 'approved';
                 })
                 .reduce((sum, res) => sum + (res.total_cost || 0), 0);
 
@@ -237,31 +260,31 @@ export default function Calendario() {
             };
         });
 
-        // Calcular tasa de ocupación (reservas aprobadas / total días del mes seleccionado)
-        const [year, month] = selectedMonth.split('-').map(Number);
-        const selectedMonthDate = new Date(year, month - 1);
-        const daysInMonth = endOfMonth(selectedMonthDate).getDate();
-        const approvedReservations = filteredReservations.filter(r => r.status === 'approved').length;
-        const totalPossibleReservations = areas.length * daysInMonth * 2; // 2 turnos por día
+        // Calcular tasa de ocupación
+        const daysInMonth = selectedMonthEnd.getDate();
+        const approvedReservations = filteredByArea.filter(r => r.status === 'approved').length;
+        const totalPossibleReservations = (selectedAreaId === 'all' ? areas.length : 1) * daysInMonth * 2;
         const occupancyRate = totalPossibleReservations > 0
             ? Math.round((approvedReservations / totalPossibleReservations) * 100)
             : 0;
 
-        // Reservas recientes
-        const recentReservations = filteredReservations
+        // Reservas recientes (de todas)
+        const recentReservations = [...reservations]
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            .slice(0, 5);
+            .slice(0, 6);
 
-        // Calcular ingresos totales
-        const totalRevenue = filteredReservations
+        // Calcular ingresos totales (del mes seleccionado)
+        const totalRevenue = filteredByArea
             .filter(r => r.status === 'approved')
             .reduce((sum, r) => sum + (r.total_cost || 0), 0);
 
         return {
-            totalReservations: filteredReservations.length,
+            totalReservations: filteredByArea.length,
             totalRevenue,
             activeUsers: userCount,
             occupancyRate,
+            reservationsToday,
+            pendingValidation,
             reservationsByStatus,
             reservationsByArea,
             monthlyReservations: monthlyData,
@@ -393,47 +416,59 @@ export default function Calendario() {
 
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Card className="border-none shadow-sm bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
+                    <Card className="border-none shadow-sm bg-white overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <h3 className="text-sm font-medium text-indigo-100 uppercase tracking-wider">Total Reservas</h3>
-                            <ClipboardCheck className="w-4 h-4 text-indigo-200" />
+                            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Reservas Hoy</h3>
+                            <Activity className="w-4 h-4 text-indigo-500" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold">{adminStats.totalReservations}</div>
-                            <p className="text-xs text-indigo-200 mt-1">En el período seleccionado</p>
+                            <div className="text-3xl font-bold text-gray-900">{adminStats.reservationsToday}</div>
+                            <p className="text-[10px] text-gray-500 mt-1 flex items-center">
+                                <span className="text-indigo-600 font-bold mr-1">En curso</span> para el día de hoy
+                            </p>
                         </CardContent>
                     </Card>
 
-                    <Card className="border-none shadow-sm bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
+                    <Card className="border-none shadow-sm bg-white overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <h3 className="text-sm font-medium text-emerald-100 uppercase tracking-wider">Ingresos Totales</h3>
-                            <DollarSign className="w-4 h-4 text-emerald-200" />
+                            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ingresos Mes</h3>
+                            <DollarSign className="w-4 h-4 text-emerald-500" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold">{formatCurrency(adminStats.totalRevenue)}</div>
-                            <p className="text-xs text-emerald-200 mt-1">Reservas aprobadas</p>
+                            <div className="text-3xl font-bold text-gray-900">{formatCurrency(adminStats.totalRevenue)}</div>
+                            <p className="text-[10px] text-gray-500 mt-1 flex items-center">
+                                <span className="text-emerald-600 font-bold mr-1">Aprobados</span> en el período
+                            </p>
                         </CardContent>
                     </Card>
 
-                    <Card className="border-none shadow-sm bg-gradient-to-br from-amber-500 to-amber-600 text-white">
+                    <Card className="border-none shadow-sm bg-white overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <h3 className="text-sm font-medium text-amber-100 uppercase tracking-wider">Tasa de Ocupación</h3>
-                            <Target className="w-4 h-4 text-amber-200" />
+                            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Por Validar</h3>
+                            <AlertCircle className="w-4 h-4 text-amber-500" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold">{adminStats.occupancyRate}%</div>
-                            <p className="text-xs text-amber-200 mt-1">Del mes seleccionado</p>
+                            <div className="text-3xl font-bold text-gray-900">{adminStats.pendingValidation}</div>
+                            <p className="text-[10px] text-gray-500 mt-1 flex items-center">
+                                <span className="text-amber-600 font-bold mr-1">Pendientes</span> de revisión manual
+                            </p>
                         </CardContent>
                     </Card>
 
-                    <Card className="border-none shadow-sm bg-gradient-to-br from-rose-500 to-rose-600 text-white">
+                    <Card className="border-none shadow-sm bg-white overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <h3 className="text-sm font-medium text-rose-100 uppercase tracking-wider">Usuarios Activos</h3>
-                            <Users className="w-4 h-4 text-rose-200" />
+                            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ocupación</h3>
+                            <Target className="w-4 h-4 text-rose-500" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-bold">{adminStats.activeUsers}</div>
-                            <p className="text-xs text-rose-200 mt-1">Residentes registrados</p>
+                            <div className="text-3xl font-bold text-gray-900">{adminStats.occupancyRate}%</div>
+                            <p className="text-[10px] text-gray-500 mt-1 flex items-center">
+                                <span className="text-rose-600 font-bold mr-1">Eficiencia</span> de uso de áreas
+                            </p>
                         </CardContent>
                     </Card>
                 </div>
@@ -638,7 +673,10 @@ export default function Calendario() {
                                                 {res.common_areas?.name || 'N/A'}
                                             </td>
                                             <td className="px-4 py-3 text-sm text-gray-600">
-                                                {res.user_id?.substring(0, 8) || 'N/A'}
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-gray-900">{res.profiles?.full_name || 'Usuario desconocido'}</span>
+                                                    <span className="text-[10px] text-gray-400 font-mono">{res.user_id?.substring(0, 8)}</span>
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3 text-sm text-gray-600">
                                                 {formatDate(res.start_datetime)}
@@ -647,15 +685,15 @@ export default function Calendario() {
                                                 {format(new Date(res.start_datetime), 'HH:mm')} - {format(new Date(res.end_datetime), 'HH:mm')}
                                             </td>
                                             <td className="px-4 py-3">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${res.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                                    res.status === 'pending_validation' ? 'bg-amber-100 text-amber-800' :
-                                                        res.status === 'pending_payment' ? 'bg-red-100 text-red-800' :
-                                                            'bg-gray-100 text-gray-800'
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${res.status === 'approved' ? 'bg-green-50 text-green-700 border border-green-100' :
+                                                    res.status === 'pending_validation' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                                                        res.status === 'pending_payment' ? 'bg-red-50 text-red-700 border border-red-100' :
+                                                            'bg-gray-50 text-gray-600 border border-gray-100'
                                                     }`}>
                                                     {getStatusLabel(res.status)}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                            <td className="px-4 py-3 text-sm font-bold text-gray-900">
                                                 {formatCurrency(res.total_cost || 0)}
                                             </td>
                                         </tr>

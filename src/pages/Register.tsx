@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { translateAuthError } from '@/lib/utils';
 import { useOrganizationImages } from '@/hooks/useOrganizationImages';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -88,7 +89,7 @@ export default function RegisterPage() {
       // Redirect to login or show success message
       setIsSuccessAlertOpen(true);
     } catch (error: any) {
-      setError(error.message || 'Error al registrarse');
+      setError(translateAuthError(error.message) || 'Error al registrarse');
     } finally {
       setLoading(false);
     }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useOrganizationImages } from '@/hooks/useOrganizationImages';
+import { translateAuthError } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -49,7 +50,7 @@ export default function ForgotPasswordPage() {
       if (error) throw error;
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.message || 'Error al enviar el correo de recuperación');
+      setError(translateAuthError(err.message || 'Error al enviar el correo de recuperación'));
     } finally {
       setLoading(false);
     }

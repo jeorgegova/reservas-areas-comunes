@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, useRef } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -30,6 +30,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  // Ref para tener el perfil actualizado dentro de los callbacks de Supabase
+  const profileRef = useRef<Profile | null>(null);
+  
+  // Actualizar el ref cuando cambie el perfil
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
   // Persistir impersonatedOrgId en localStorage para mantener el modo soporte entre recargas
   const [impersonatedOrgId, setImpersonatedOrgId] = useState<string | null>(() => {
     const saved = localStorage.getItem('impersonatedOrgId');
@@ -46,9 +53,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setImpersonatedOrgId(id);
   };
 
-  const fetchProfile = async (userId: string) => {
-    console.log('useAuth: fetchProfile iniciando para:', userId);
-    setLoading(true);
+  const fetchProfile = async (userId: string, isInitialLoad = false) => {
+    console.log('useAuth: fetchProfile iniciando para:', userId, 'isInitialLoad:', isInitialLoad);
+    
+    // Solo mostramos el estado de carga global si no tenemos perfil actual o es la carga inicial
+    // Esto previene que al cambiar de pestaña y que Supabase refresque el token,
+    // se desmonte toda la app por el estado loading.
+    if (!profileRef.current || isInitialLoad) {
+      setLoading(true);
+    }
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -78,7 +92,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        fetchProfile(session.user.id, true);
       } else {
         console.log('useAuth: No hay sesión inicial, loading false');
         setLoading(false);
@@ -88,13 +102,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Listen for changes on auth state
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('useAuth: onAuthStateChange disparado:', event, session?.user?.id);
+      
+      const currentUser = session?.user ?? null;
       setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
+      setUser(currentUser);
+      
+      if (currentUser) {
         // Usamos setTimeout para desacoplar completamente la carga del perfil
         // del hilo de ejecución de onAuthStateChange
         setTimeout(() => {
-          fetchProfile(session.user.id);
+          // Si el evento es un cambio de usuario (sign in) o carga inicial, 
+          // podríamos querer mostrar el loader, pero para TOKEN_REFRESHED no.
+          // Para simplificar, solo mostramos loader si NO hay perfil actual.
+          fetchProfile(currentUser.id, false);
         }, 0);
       } else {
         console.log('useAuth: Cambio de estado sin sesión, profile null, loading false');

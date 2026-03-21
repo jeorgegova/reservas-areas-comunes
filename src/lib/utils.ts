@@ -56,3 +56,33 @@ export function formatDateTimeISO(isoString: string) {
   const [, year, month, day, hour, minute] = match;
   return `${day}/${month}/${year} ${hour}:${minute}`;
 }
+
+export function translateAuthError(message: string): string {
+  if (!message) return 'Ha ocurrido un error inesperado';
+
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('invalid login credentials')) {
+    return 'Correo o contraseña incorrectos';
+  }
+  if (lowerMessage.includes('user already registered')) {
+    return 'Este correo electrónico ya está registrado';
+  }
+  if (lowerMessage.includes('email not confirmed')) {
+    return 'Por favor, confirma tu correo electrónico antes de iniciar sesión';
+  }
+  if (lowerMessage.includes('password should be at least 6 characters')) {
+    return 'La contraseña debe tener al menos 6 caracteres';
+  }
+  if (lowerMessage.includes('too many requests')) {
+    return 'Demasiadas solicitudes. Por favor, intenta de nuevo más tarde';
+  }
+  if (lowerMessage.includes('network error')) {
+    return 'Error de conexión. Por favor, verifica tu internet';
+  }
+  if (lowerMessage.includes('user not found')) {
+    return 'Usuario no encontrado';
+  }
+
+  return message;
+}

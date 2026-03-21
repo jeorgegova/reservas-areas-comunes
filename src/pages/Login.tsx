@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogIn, Building2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { formatCurrency, cn, translateAuthError } from '@/lib/utils';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -79,7 +79,7 @@ export default function LoginPage() {
       // La redirección real se maneja en el useEffect arriba basado en el perfil
     } catch (err: any) {
       console.error('Captura de error en Login.tsx:', err);
-      setError(err.message || 'Error al iniciar sesión');
+      setError(translateAuthError(err.message || 'Error al iniciar sesión'));
     } finally {
       setLoading(false);
     }

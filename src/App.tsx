@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import LoginPage from './pages/Login';
 import RegisterPage from './pages/Register';
 import ForgotPasswordPage from './pages/ForgotPassword';
@@ -40,14 +40,15 @@ const SuperAdminRoute = ({ children }: { children: React.ReactNode }) => {
 const RootLoader = () => {
   const navigate = useNavigate();
   const { profile, loading } = useAuth();
+  const [shouldShowLogin, setShouldShowLogin] = useState(false);
   const hasProcessed = useRef(false);
 
   useEffect(() => {
-    // Solo procesar una vez
+    // Solo procesar una vez para evitar bucles
     if (hasProcessed.current) return;
-    hasProcessed.current = true;
 
     if (!loading) {
+      hasProcessed.current = true;
       if (profile) {
         // Usuario autenticado
         if (profile.role === 'super_admin') {
@@ -61,11 +62,16 @@ const RootLoader = () => {
         if (lastSlug) {
           navigate(`/${lastSlug}/login`, { replace: true });
         } else {
-          navigate('/super-admin/organizations', { replace: true });
+          // Si no hay slug previo, mostramos el login central aquí mismo
+          setShouldShowLogin(true);
         }
       }
     }
   }, [profile, loading, navigate]);
+
+  if (shouldShowLogin) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen">
