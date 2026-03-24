@@ -318,18 +318,44 @@ export default function Calendario() {
     // Helper functions for calendar events
     const getStatusColor = (status: string) => {
         switch (status) {
-            case 'approved': return '#10b981';
-            case 'pending_validation': return '#f59e0b';
-            case 'pending_payment': return '#ef4444';
-            default: return '#6b7280';
+            case 'approved': return '#dcfce7'; // light green
+            case 'pending_validation': return '#fef3c7'; // light yellow
+            case 'pending_payment': return '#fecaca'; // light red
+            default: return '#f3f4f6';
+        }
+    };
+
+    const getStatusTextColor = (status: string) => {
+        switch (status) {
+            case 'approved': return '#166534'; // dark green
+            case 'pending_validation': return '#92400e'; // dark amber
+            case 'pending_payment': return '#991b1b'; // dark red
+            default: return '#374151';
         }
     };
 
     const getSeverityColor = (severity: string) => {
         switch (severity) {
-            case 'critical': return '#dc2626';
-            case 'warning': return '#d97706';
-            default: return '#2563eb';
+            case 'critical': return '#fecaca'; // light red for border
+            case 'warning': return '#fef3c7'; // light yellow for border
+            default: return '#dbeafe'; // light blue for border
+        }
+    };
+
+    const getBrightStatusColor = (status: string) => {
+        switch (status) {
+            case 'approved': return '#10b981'; // bright green
+            case 'pending_validation': return '#f59e0b'; // bright yellow
+            case 'pending_payment': return '#ef4444'; // bright red
+            default: return '#6b7280';
+        }
+    };
+
+    const getBrightSeverityColor = (severity: string) => {
+        switch (severity) {
+            case 'critical': return '#dc2626'; // bright red
+            case 'warning': return '#d97706'; // bright amber
+            default: return '#2563eb'; // bright blue
         }
     };
 
@@ -342,6 +368,7 @@ export default function Calendario() {
             end: detoxTime(res.end_datetime),
             backgroundColor: getStatusColor(res.status),
             borderColor: getStatusColor(res.status),
+            textColor: getStatusTextColor(res.status),
             extendedProps: {
                 type: 'reservation',
                 status: res.status,
@@ -356,9 +383,9 @@ export default function Calendario() {
             title: `[MANTENIMIENTO] ${notice.common_areas?.name || 'General'}: ${notice.title}`,
             start: detoxTime(notice.starts_at),
             end: detoxTime(notice.ends_at),
-            backgroundColor: '#374151',
+            backgroundColor: '#dbeafe', // light blue
             borderColor: getSeverityColor(notice.severity),
-            textColor: '#ffffff',
+            textColor: '#1e40af', // dark blue
             className: 'maintenance-event',
             extendedProps: {
                 type: 'maintenance',
@@ -795,8 +822,8 @@ export default function Calendario() {
                                     eventContent={(eventInfo) => {
                                         const isReservation = eventInfo.event.extendedProps.type === 'reservation';
                                         const statusColor = isReservation
-                                            ? getStatusColor(eventInfo.event.extendedProps.status)
-                                            : getSeverityColor(eventInfo.event.extendedProps.severity);
+                                            ? getBrightStatusColor(eventInfo.event.extendedProps.status)
+                                            : getBrightSeverityColor(eventInfo.event.extendedProps.severity);
 
                                         const isMonthView = eventInfo.view.type === 'dayGridMonth';
 
@@ -911,7 +938,7 @@ export default function Calendario() {
                                             tooltip.innerHTML = `
                                                 <div style="padding: 12px; min-width: 200px;">
                                                     <div style="font-weight: 700; font-size: 14px; color: #111827; border-bottom: 1px solid #f3f4f6; padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                                                        <span style="background: ${getStatusColor(props.status)}; width: 8px; height: 8px; border-radius: 50%;"></span>
+                                                        <span style="background: ${getBrightStatusColor(props.status)}; width: 8px; height: 8px; border-radius: 50%;"></span>
                                                         Reserva
                                                     </div>
                                                     <div style="font-size: 13px; color: #374151; margin-bottom: 6px;">
@@ -930,7 +957,7 @@ export default function Calendario() {
                                             tooltip.innerHTML = `
                                                 <div style="padding: 12px; min-width: 220px;">
                                                     <div style="font-weight: 700; font-size: 14px; color: #111827; border-bottom: 1px solid #f3f4f6; padding-bottom: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                                                        <span style="background: ${getSeverityColor(props.severity)}; width: 8px; height: 8px; border-radius: 50%;"></span>
+                                                        <span style="background: ${getBrightSeverityColor(props.severity)}; width: 8px; height: 8px; border-radius: 50%;"></span>
                                                         Mantenimiento
                                                     </div>
                                                     <div style="font-size: 12px; color: #374151; margin-bottom: 4px;">
@@ -956,7 +983,7 @@ export default function Calendario() {
                                             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
                                             display: none;
                                             pointer-events: none;
-                                            border-left: 4px solid ${props.type === 'reservation' ? getStatusColor(props.status) : getSeverityColor(props.severity)};
+                                            border-left: 4px solid ${props.type === 'reservation' ? getBrightStatusColor(props.status) : getBrightSeverityColor(props.severity)};
                                         `;
 
                                         document.body.appendChild(tooltip);

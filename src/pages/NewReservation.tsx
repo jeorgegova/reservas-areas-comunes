@@ -4,8 +4,9 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-// import { Input } from '@/components/ui/input';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { formatCurrency, cn, detoxTime } from '@/lib/utils';
 import {
   Clock,
@@ -17,7 +18,9 @@ import {
   ClipboardCheck,
   Sun,
   Moon,
-  Calendar
+  Calendar,
+  Users,
+  Search
 } from 'lucide-react';
 import { AlertDialog } from '@/components/ui/alert-dialog';
 import { format, addHours, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isToday, addMonths, subMonths } from 'date-fns';
@@ -47,11 +50,14 @@ export default function NewReservationPage() {
 
   // Para admins: seleccionar usuario para la reserva
   const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [isFreeReservation, setIsFreeReservation] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState<string>('');
 
   const [loading, setLoading] = useState(false);
   const [blockingError, setBlockingError] = useState<string | null>(null);
   const [isErrorAlertOpen, setIsErrorAlertOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [userError, setUserError] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile?.organization_id) {
@@ -129,12 +135,14 @@ export default function NewReservationPage() {
 
     if (data) {
       setUsers(data);
-      // Por defecto, seleccionar el primer usuario
-      if (data.length > 0) {
-        setSelectedUserId(data[0].id);
-      }
     }
   };
+
+  const filteredUsers = users.filter(user =>
+    user.full_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+    user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+    user.apartment?.toLowerCase().includes(userSearchTerm.toLowerCase())
+  );
 
   const checkPendingReservations = async () => {
     if (!profile) return;
@@ -184,6 +192,11 @@ export default function NewReservationPage() {
   };
 
   const handleAreaSelect = (area: any) => {
+    if (isAdmin && !selectedUserId) {
+      setUserError('Por favor selecciona un usuario antes de elegir un área.');
+      return;
+    }
+    setUserError(null);
     setSelectedArea(area);
     setSelectedJornada(null); // Reset jornada selection
     setStep(2);
@@ -231,6 +244,8 @@ export default function NewReservationPage() {
 
   // Calcular el costo total según el tipo de precio
   const calculateTotalCost = () => {
+    if (isFreeReservation) return 0;
+
     if (!selectedArea) return 0;
 
     if (selectedArea.pricing_type === 'jornada') {
@@ -419,6 +434,8 @@ export default function NewReservationPage() {
         return;
       }
 
+      const reservationStatus = isFreeReservation ? 'pending_validation' : 'pending_payment';
+
       const { data, error } = await supabase
         .from('reservations')
         .insert({
@@ -428,15 +445,20 @@ export default function NewReservationPage() {
           end_datetime: end,
           total_cost: totalCost,
           organization_id: profile?.organization_id,
-          status: 'pending_payment'
+          status: reservationStatus
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      // Redirect to specific payment mock page
-      navigate(`/payment/${data.id}`);
+      if (isFreeReservation) {
+        // No payment needed, redirect to reservations list
+        navigate('/reservations/my');
+      } else {
+        // Redirect to payment page
+        navigate(`/payment/${data.id}`);
+      }
     } catch (error: any) {
       setErrorMessage(error.message || 'Error al crear la reserva');
       setIsErrorAlertOpen(true);
@@ -537,22 +559,63 @@ export default function NewReservationPage() {
         <>
           {/* Selector de usuario para admin */}
           {isAdmin && users.length > 0 && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                Reservar para usuario:
-              </Label>
-              <select
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-                className="w-full p-2 border border-gray-200 rounded-lg bg-white text-gray-900"
-              >
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.full_name || user.email} {user.apartment ? `- Apt ${user.apartment}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Card className="mb-6 border-primary/20 bg-primary/5">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  <CardTitle className="text-lg font-bold text-gray-900">Reservar para Usuario</CardTitle>
+                </div>
+                <CardDescription>Selecciona el residente que hará uso del espacio</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {users.length > 5 && (
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      placeholder="Buscar por nombre, email o apartamento..."
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                      className="pl-10 h-10"
+                    />
+                  </div>
+                )}
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => {
+                    setSelectedUserId(e.target.value);
+                    setUserError(null); // Clear error when selecting
+                  }}
+                  className={cn(
+                    "w-full p-3 border rounded-lg bg-white text-gray-900 transition-colors",
+                    selectedUserId ? "border-green-200 bg-green-50/50" : "border-gray-200"
+                  )}
+                >
+                  <option value="">Seleccionar usuario</option>
+                  {filteredUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.full_name || user.email} {user.apartment ? `- Apt ${user.apartment}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {userError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+                    <AlertCircle className="w-4 h-4" />
+                    {userError}
+                  </div>
+                )}
+                {selectedUserId && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-green-700">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm font-medium">
+                        Usuario seleccionado: {users.find(u => u.id === selectedUserId)?.full_name || users.find(u => u.id === selectedUserId)?.email}
+                        {users.find(u => u.id === selectedUserId)?.apartment && ` - Apt ${users.find(u => u.id === selectedUserId)?.apartment}`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -742,9 +805,23 @@ export default function NewReservationPage() {
                     <div>
                       <p className="text-xs text-gray-500">Inversión total</p>
                       <p className="text-xl font-bold">
-                        {formatCurrency(calculateTotalCost())}
+                        {isFreeReservation ? 'Gratis' : formatCurrency(calculateTotalCost())}
                       </p>
                     </div>
+                  </div>
+                </div>
+
+                {/* Opción de reserva sin costo */}
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">Reserva sin costo</p>
+                      <p className="text-xs text-blue-700">No requiere pago, queda pendiente de validación</p>
+                    </div>
+                    <Switch
+                      checked={isFreeReservation}
+                      onCheckedChange={setIsFreeReservation}
+                    />
                   </div>
                 </div>
               </div>
@@ -1069,21 +1146,34 @@ export default function NewReservationPage() {
                 <span className="font-medium">{selectedStartTime}</span>
               </div>
               <div className="flex justify-between items-center pt-2">
-                <span className="text-sm font-medium">Total a pagar</span>
-                <span className="text-lg font-bold text-primary">{formatCurrency(calculateTotalCost())}</span>
+                <span className="text-sm font-medium">{isFreeReservation ? 'Costo' : 'Total a pagar'}</span>
+                <span className="text-lg font-bold text-primary">
+                  {isFreeReservation ? 'Gratis' : formatCurrency(calculateTotalCost())}
+                </span>
               </div>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+            <div className={cn(
+              "border rounded-lg p-3 flex gap-3",
+              isFreeReservation
+                ? "bg-blue-50 border-blue-200"
+                : "bg-amber-50 border-amber-200"
+            )}>
+              <AlertCircle className={cn(
+                "w-5 h-5 shrink-0",
+                isFreeReservation ? "text-blue-500" : "text-amber-500"
+              )} />
               <p className="text-sm text-gray-600">
-                Al confirmar, se generará una solicitud pendiente de validación. Tienes 15 minutos para completar la transacción.
+                {isFreeReservation
+                  ? "Al confirmar, se generará la reserva pendiente de validación sin costo adicional."
+                  : "Al confirmar, se generará una solicitud pendiente de validación. Tienes 15 minutos para completar la transacción."
+                }
               </p>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
             <Button className="w-full" onClick={handleReserve} disabled={loading}>
-              {loading ? "Procesando..." : "Confirmar y proceder al pago"}
+              {loading ? "Procesando..." : isFreeReservation ? "Confirmar Reserva Gratis" : "Confirmar y proceder al pago"}
             </Button>
             <Button variant="ghost" className="w-full" onClick={() => setStep(2)}>
               <ChevronLeft className="w-4 h-4 mr-2" />

@@ -161,12 +161,14 @@ export default function LoginPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between ml-1">
                 <Label htmlFor="password" className={cn("font-medium", !slug ? "text-gray-700" : "text-white")}>Contraseña</Label>
-                <Link
-                  to={slug ? `/${slug}/forgot-password` : "/forgot-password"}
-                  className={cn("text-xs font-medium transition-colors", !slug ? "text-indigo-600 hover:text-indigo-700" : "text-blue-200 hover:text-white hover:underline")}
-                >
-                  ¿Olvidaste tu contraseña?
-                </Link>
+                {slug && (
+                  <Link
+                    to={`/${slug}/forgot-password`}
+                    className={cn("text-xs font-medium transition-colors", "text-blue-200 hover:text-white hover:underline")}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                )}
               </div>
               <Input
                 id="password"

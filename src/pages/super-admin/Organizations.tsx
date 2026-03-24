@@ -29,7 +29,7 @@ import {
   Download
 } from 'lucide-react';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
-import { differenceInDays, parseISO, isPast } from 'date-fns';
+import { differenceInDays, parseISO, isPast, addMonths, format } from 'date-fns';
 import {
   BarChart,
   Bar,
@@ -56,7 +56,10 @@ export default function SuperAdminOrganizations() {
     trial: 0,
     pastDue: 0,
     totalRevenue: 0,
-    totalUsers: 0
+    totalUsers: 0,
+    totalReservations: 0,
+    completedPayments: 0,
+    averageReservationValue: 0
   });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -76,6 +79,12 @@ export default function SuperAdminOrganizations() {
     subscription_end_date: ''
   });
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
+  const [selectedOrgForSubscription, setSelectedOrgForSubscription] = useState<any>(null);
+  const [subscriptionFormData, setSubscriptionFormData] = useState({
+    status: '',
+    end_date: ''
+  });
 
   useEffect(() => {
     if (profile?.role === 'super_admin') {
@@ -105,13 +114,34 @@ export default function SuperAdminOrganizations() {
         .from('profiles')
         .select('*', { count: 'exact', head: true });
 
+      // Fetch real revenue from completed payments
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('status', 'completed');
+
+      const totalRevenue = payments?.reduce((sum, p) => sum + Number(p.amount || 0), 0) || 0;
+      const completedPayments = payments?.length || 0;
+
+      // Fetch reservations data
+      const { data: reservations } = await supabase
+        .from('reservations')
+        .select('total_cost');
+
+      const totalReservations = reservations?.length || 0;
+      const totalResValue = reservations?.reduce((sum, r) => sum + Number(r.total_cost || 0), 0) || 0;
+      const averageReservationValue = totalReservations > 0 ? totalResValue / totalReservations : 0;
+
       setStats({
         total: orgs?.length || 0,
         active,
         trial,
         pastDue,
-        totalRevenue: active * 50000, // Simulación: 50k por org activa
-        totalUsers: usersCount || 0
+        totalRevenue,
+        totalUsers: usersCount || 0,
+        totalReservations,
+        completedPayments,
+        averageReservationValue
       });
     } catch (error) {
       console.error('Error fetching super-admin data:', error);
@@ -220,6 +250,40 @@ export default function SuperAdminOrganizations() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const handleOpenSubscriptionModal = (org: any) => {
+    setSelectedOrgForSubscription(org);
+    setSubscriptionFormData({
+      status: org.subscription_status,
+      end_date: org.subscription_end_date ? org.subscription_end_date.split('T')[0] : ''
+    });
+    setSubscriptionModalOpen(true);
+  };
+
+  const extendSubscription = (months: number) => {
+    const currentDate = subscriptionFormData.end_date ? parseISO(subscriptionFormData.end_date) : new Date();
+    const newDate = addMonths(currentDate, months);
+    setSubscriptionFormData(prev => ({ ...prev, end_date: format(newDate, 'yyyy-MM-dd') }));
+  };
+
+  const handleSubscriptionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const { error } = await supabase
+      .from('organizations')
+      .update({
+        subscription_status: subscriptionFormData.status,
+        subscription_end_date: subscriptionFormData.end_date || null
+      })
+      .eq('id', selectedOrgForSubscription.id);
+
+    if (!error) {
+      setSubscriptionModalOpen(false);
+      fetchData();
+    }
+    setLoading(false);
+  };
+
   const filteredOrgs = organizations.filter(org => {
     const matchesSearch = org.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          org.slug?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -291,7 +355,7 @@ export default function SuperAdminOrganizations() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card className="border-none shadow-sm bg-white p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-50 rounded-lg">
@@ -331,8 +395,30 @@ export default function SuperAdminOrganizations() {
               <TrendingUp className="w-4 h-4 text-indigo-600" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ingresos Est.</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ingresos Reales</p>
               <p className="text-xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue)}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="border-none shadow-sm bg-white p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-50 rounded-lg">
+              <PieChart className="w-4 h-4 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Reservas</p>
+              <p className="text-xl font-bold text-gray-900">{stats.totalReservations}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="border-none shadow-sm bg-white p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-orange-50 rounded-lg">
+              <BarChart3 className="w-4 h-4 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Valor Promedio</p>
+              <p className="text-xl font-bold text-gray-900">{formatCurrency(stats.averageReservationValue)}</p>
             </div>
           </div>
         </Card>
@@ -475,6 +561,16 @@ export default function SuperAdminOrganizations() {
                               title="Entrar en modo soporte"
                             >
                               <ShieldPlus className="w-4 h-4" />
+                            </Button>
+
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-lg"
+                              onClick={() => handleOpenSubscriptionModal(org)}
+                              title="Gestionar Suscripción"
+                            >
+                              <Calendar className="w-4 h-4" />
                             </Button>
                             
                             <div className="relative">
@@ -782,6 +878,122 @@ export default function SuperAdminOrganizations() {
                   className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[140px] rounded-xl font-bold shadow-lg shadow-indigo-500/20"
                 >
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingOrg ? 'Guardar Cambios' : 'Crear Conjunto')}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Management Modal */}
+      {subscriptionModalOpen && selectedOrgForSubscription && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="px-8 pt-8 pb-4 flex items-center justify-between border-b border-gray-100">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Gestión de Suscripción</h2>
+                <p className="text-gray-500 text-xs">{selectedOrgForSubscription.name}</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setSubscriptionModalOpen(false)}>
+                <XCircle className="w-5 h-5 text-gray-400" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleSubscriptionSubmit} className="p-8 space-y-6">
+              {/* Current Status */}
+              <div className="p-4 bg-gray-50 rounded-xl">
+                <div className="text-sm font-bold text-gray-700 mb-2">Estado Actual</div>
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "inline-flex items-center w-fit rounded-full px-2 py-0.5 text-[10px] font-bold border uppercase",
+                    selectedOrgForSubscription.subscription_status === 'active'
+                      ? "bg-green-50 text-green-700 border-green-100"
+                      : selectedOrgForSubscription.subscription_status === 'past_due'
+                      ? "bg-red-50 text-red-700 border-red-100"
+                      : "bg-gray-50 text-gray-500 border-gray-100"
+                  )}>
+                    {selectedOrgForSubscription.subscription_status === 'active' && <CheckCircle2 className="w-3 h-3 mr-1" />}
+                    {selectedOrgForSubscription.subscription_status === 'past_due' && <AlertCircle className="w-3 h-3 mr-1" />}
+                    {selectedOrgForSubscription.subscription_status}
+                  </div>
+                  {selectedOrgForSubscription.subscription_end_date && (
+                    <span className="text-xs text-gray-500">
+                      Hasta {formatDate(selectedOrgForSubscription.subscription_end_date)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* New Status */}
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Nuevo Estado</Label>
+                <select
+                  value={subscriptionFormData.status}
+                  onChange={e => setSubscriptionFormData({ ...subscriptionFormData, status: e.target.value })}
+                  className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                >
+                  <option value="active">Activa</option>
+                  <option value="inactive">Inactiva</option>
+                  <option value="trial">Prueba</option>
+                  <option value="past_due">Mora (Pendiente Pago)</option>
+                </select>
+              </div>
+
+              {/* New End Date */}
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Fecha de Vencimiento</Label>
+                <Input
+                  type="date"
+                  value={subscriptionFormData.end_date}
+                  onChange={e => setSubscriptionFormData({ ...subscriptionFormData, end_date: e.target.value })}
+                  className="h-11 rounded-xl"
+                />
+              </div>
+
+              {/* Quick Extend Options */}
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Extender Rápidamente</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => extendSubscription(1)}
+                    className="flex-1 h-9 text-xs font-bold rounded-lg"
+                  >
+                    +1 Mes
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => extendSubscription(3)}
+                    className="flex-1 h-9 text-xs font-bold rounded-lg"
+                  >
+                    +3 Meses
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => extendSubscription(12)}
+                    className="flex-1 h-9 text-xs font-bold rounded-lg"
+                  >
+                    +1 Año
+                  </Button>
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3">
+                <Button variant="ghost" type="button" onClick={() => setSubscriptionModalOpen(false)} className="rounded-xl font-bold">
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px] rounded-xl font-bold shadow-lg shadow-indigo-500/20"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Actualizar'}
                 </Button>
               </div>
             </form>
