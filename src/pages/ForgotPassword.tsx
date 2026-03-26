@@ -25,11 +25,12 @@ export default function ForgotPasswordPage() {
   }, [slug]);
 
   const fetchOrganization = async () => {
+    // Allow organizations with active or pending_validation subscription status
     const { data } = await supabase
       .from('organizations')
       .select('*')
       .eq('slug', slug)
-      .eq('subscription_status', 'active')
+      .in('subscription_status', ['active', 'pending_validation'])
       .single();
     if (data) {
       setOrganization(data);

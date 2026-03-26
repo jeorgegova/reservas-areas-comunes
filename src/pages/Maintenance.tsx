@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,7 @@ interface Notice {
 
 export default function MaintenancePage() {
   const { profile } = useAuth();
+  const { status: subscriptionStatus, daysUntilExpiry, previousSubscriptionExpiredBeyond20Days } = useSubscriptionStatus(profile?.organization_id);
   const [searchParams, setSearchParams] = useSearchParams();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [areas, setAreas] = useState<any[]>([]);
@@ -304,10 +306,18 @@ export default function MaintenancePage() {
               ? "Informa a los residentes sobre cierres o novedades."
               : "Mantente informado sobre las novedades y mantenimientos de las zonas comunes."}
           </p>
+          {isAdmin && subscriptionStatus !== 'active' && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-2 ml-1">
+              <p className="text-sm text-yellow-800">
+                La suscripción no está activa. Las funcionalidades de creación de avisos están restringidas.
+              </p>
+            </div>
+          )}
         </div>
         {isAdmin && (
           <Button
             onClick={() => setIsAdding(true)}
+            disabled={subscriptionStatus === 'inactive' || (subscriptionStatus === 'past_due' && daysUntilExpiry !== undefined && daysUntilExpiry < -20) || previousSubscriptionExpiredBeyond20Days}
             className="w-full md:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-11 px-5 rounded-xl shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="mr-2 h-4 w-4" /> Nuevo Aviso
@@ -515,6 +525,7 @@ export default function MaintenancePage() {
             {isAdmin && (
               <Button
                 onClick={() => setIsAdding(true)}
+                disabled={subscriptionStatus === 'inactive' || (subscriptionStatus === 'past_due' && daysUntilExpiry !== undefined && daysUntilExpiry < -20) || previousSubscriptionExpiredBeyond20Days}
                 className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground font-medium h-10 px-5 rounded-xl shadow-lg shadow-primary/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Plus className="mr-2 h-4 w-4" /> Crear Primer Aviso

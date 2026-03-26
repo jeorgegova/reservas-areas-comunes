@@ -33,10 +33,11 @@ export default function RegisterPage() {
   }, [slug]);
 
   const fetchOrganizations = async () => {
+    // Allow organizations with active or pending_validation subscription status
     const { data } = await supabase
       .from('organizations')
       .select('*')
-      .eq('subscription_status', 'active');
+      .in('subscription_status', ['active', 'pending_validation']);
     
     if (data) {
       setOrganizations(data);

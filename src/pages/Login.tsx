@@ -32,7 +32,6 @@ export default function LoginPage() {
       .from('organizations')
       .select('*')
       .eq('slug', slug)
-      .eq('subscription_status', 'active')
       .single();
     if (data) {
       setOrganization(data);

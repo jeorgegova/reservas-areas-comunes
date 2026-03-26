@@ -1,0 +1,387 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Loader2,
+  XCircle,
+  Crown,
+  CheckCircle2,
+  X
+} from 'lucide-react';
+import { cn, formatCurrency } from '@/lib/utils';
+
+export default function SuperAdminSubscriptionPlans() {
+  const { profile } = useAuth();
+  const [plans, setPlans] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    price: '',
+    duration_in_days: '',
+    max_reservations: '',
+    features: ''
+  });
+
+  useEffect(() => {
+    if (profile?.role === 'super_admin') {
+      fetchPlans();
+    }
+  }, [profile]);
+
+  const fetchPlans = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) setPlans(data);
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenModal = (plan: any = null) => {
+    if (plan) {
+      setEditingPlan(plan);
+      setFormData({
+        name: plan.name || '',
+        description: plan.description || '',
+        price: plan.price?.toString() || '',
+        duration_in_days: plan.duration_in_days?.toString() || '',
+        max_reservations: plan.max_reservations?.toString() || '',
+        features: plan.features ? JSON.stringify(plan.features, null, 2) : ''
+      });
+    } else {
+      setEditingPlan(null);
+      setFormData({
+        name: '',
+        description: '',
+        price: '',
+        duration_in_days: '',
+        max_reservations: '',
+        features: ''
+      });
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const dataToSave = {
+        name: formData.name,
+        description: formData.description,
+        price: parseFloat(formData.price),
+        duration_in_days: parseInt(formData.duration_in_days),
+        max_reservations: formData.max_reservations ? parseInt(formData.max_reservations) : null,
+        features: formData.features ? JSON.parse(formData.features) : null
+      };
+
+      if (editingPlan) {
+        const { error } = await supabase
+          .from('subscription_plans')
+          .update(dataToSave)
+          .eq('id', editingPlan.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('subscription_plans')
+          .insert([dataToSave]);
+        if (error) throw error;
+      }
+
+      setIsModalOpen(false);
+      fetchPlans();
+    } catch (error: any) {
+      console.error('Error saving plan:', error);
+      alert('Error al guardar el plan: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const togglePlanStatus = async (planId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('subscription_plans')
+        .update({ is_active: !currentStatus })
+        .eq('id', planId);
+
+      if (error) throw error;
+      fetchPlans();
+    } catch (error) {
+      console.error('Error toggling plan status:', error);
+    }
+  };
+
+  const deletePlan = async (planId: string) => {
+    if (window.confirm('¿Estás seguro de eliminar este plan? Las organizaciones con suscripciones activas no se verán afectadas.')) {
+      try {
+        const { error } = await supabase
+          .from('subscription_plans')
+          .delete()
+          .eq('id', planId);
+
+        if (error) throw error;
+        fetchPlans();
+      } catch (error) {
+        console.error('Error deleting plan:', error);
+      }
+    }
+  };
+
+  if (profile?.role !== 'super_admin') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-gray-500">
+        <XCircle className="w-12 h-12 mb-4 text-red-400" />
+        <p className="text-lg font-medium">Acceso no autorizado</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-purple-600 rounded-xl shadow-lg shadow-purple-500/20">
+            <Crown className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Planes de Suscripción</h1>
+            <p className="text-gray-500 text-sm">Gestión de planes disponibles para organizaciones.</p>
+          </div>
+        </div>
+        <Button
+          onClick={() => handleOpenModal()}
+          className="bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-500/25 h-9 rounded-xl text-xs font-bold"
+        >
+          <Plus className="w-3.5 h-3.5 mr-1.5" />
+          Nuevo Plan
+        </Button>
+      </div>
+
+      <Card className="border-none shadow-sm bg-white overflow-hidden">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-gray-50/30 border-b border-gray-100">
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Plan</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Precio</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Duración</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Máx Reservas</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Estado</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td colSpan={6} className="px-6 py-6">
+                        <div className="h-4 bg-gray-100 rounded-full w-full" />
+                      </td>
+                    </tr>
+                  ))
+                ) : plans.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                      No hay planes de suscripción configurados.
+                    </td>
+                  </tr>
+                ) : (
+                  plans.map((plan) => (
+                    <tr key={plan.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div>
+                          <div className="font-bold text-gray-900">{plan.name}</div>
+                          {plan.description && (
+                            <div className="text-[10px] text-gray-500 mt-1">{plan.description}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-gray-900">{formatCurrency(plan.price)}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-gray-700">{plan.duration_in_days} días</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-gray-700">
+                          {plan.max_reservations ? `${plan.max_reservations} reservas` : 'Ilimitado'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => togglePlanStatus(plan.id, plan.is_active)}
+                          className={cn(
+                            "inline-flex items-center px-2 py-0.5 text-[10px] font-bold border uppercase rounded-full",
+                            plan.is_active
+                              ? "bg-green-50 text-green-700 border-green-100"
+                              : "bg-red-50 text-red-700 border-red-100"
+                          )}
+                        >
+                          {plan.is_active ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                              Activo
+                            </>
+                          ) : (
+                            <>
+                              <X className="w-3 h-3 mr-1" />
+                              Inactivo
+                            </>
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg"
+                            onClick={() => handleOpenModal(plan)}
+                            title="Editar"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                            onClick={() => deletePlan(plan.id)}
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="px-8 pt-8 pb-4 flex items-center justify-between border-b border-gray-100">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">{editingPlan ? 'Editar Plan' : 'Nuevo Plan'}</h2>
+                <p className="text-gray-500 text-xs">Configura los detalles del plan de suscripción.</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setIsModalOpen(false)}>
+                <XCircle className="w-5 h-5 text-gray-400" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Nombre del Plan</Label>
+                  <Input
+                    value={formData.name}
+                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Plan Básico"
+                    required
+                    className="h-11 rounded-xl"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Precio (COP)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.price}
+                    onChange={e => setFormData({ ...formData, price: e.target.value })}
+                    placeholder="50000"
+                    required
+                    className="h-11 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Duración (días)</Label>
+                  <Input
+                    type="number"
+                    value={formData.duration_in_days}
+                    onChange={e => setFormData({ ...formData, duration_in_days: e.target.value })}
+                    placeholder="30"
+                    required
+                    className="h-11 rounded-xl"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Máx Reservas (opcional)</Label>
+                  <Input
+                    type="number"
+                    value={formData.max_reservations}
+                    onChange={e => setFormData({ ...formData, max_reservations: e.target.value })}
+                    placeholder="100"
+                    className="h-11 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Descripción</Label>
+                <Input
+                  value={formData.description}
+                  onChange={(e: any) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Descripción del plan..."
+                  className="h-11 rounded-xl"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Características (JSON)</Label>
+                <Input
+                  value={formData.features}
+                  onChange={(e: any) => setFormData({ ...formData, features: e.target.value })}
+                  placeholder='{"reservas_ilimitadas": true, "soporte_24h": false}'
+                  className="h-11 rounded-xl font-mono text-xs"
+                />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3">
+                <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)} className="rounded-xl font-bold">
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-purple-600 hover:bg-purple-700 text-white min-w-[140px] rounded-xl font-bold shadow-lg shadow-purple-500/20"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingPlan ? 'Guardar Cambios' : 'Crear Plan')}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Building2,
   Plus,
@@ -22,14 +23,13 @@ import {
   Clock,
   MapPin,
   TrendingUp,
-  Users,
   PieChart,
   BarChart3,
   Map as MapIcon,
-  Download
+  Download,
 } from 'lucide-react';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
-import { differenceInDays, parseISO, isPast, addMonths, format } from 'date-fns';
+import { differenceInDays, parseISO, isPast } from 'date-fns';
 import {
   BarChart,
   Bar,
@@ -53,13 +53,18 @@ export default function SuperAdminOrganizations() {
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
-    trial: 0,
+    pending_validation: 0,
+    cancelled: 0,
     pastDue: 0,
+    inactive: 0,
     totalRevenue: 0,
     totalUsers: 0,
     totalReservations: 0,
     completedPayments: 0,
-    averageReservationValue: 0
+    averageReservationValue: 0,
+    activeSubscriptions: 0,
+    subscriptionRevenue: 0,
+    mrr: 0
   });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -74,74 +79,156 @@ export default function SuperAdminOrganizations() {
     phone: '',
     address: '',
     logo_url: '',
-    login_photo_url: '',
-    subscription_status: 'active',
-    subscription_end_date: ''
+    login_photo_url: ''
   });
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   const [selectedOrgForSubscription, setSelectedOrgForSubscription] = useState<any>(null);
   const [subscriptionFormData, setSubscriptionFormData] = useState({
-    status: '',
-    end_date: ''
+    plan_id: '',
+    auto_renew: false
   });
+  const [plans, setPlans] = useState<any[]>([]);
+
+  type Subscription = {
+  updated_at: string;
+  // agrega más campos si quieres
+};
 
   useEffect(() => {
     if (profile?.role === 'super_admin') {
       fetchData();
+      // Run subscription status update for all organizations on load
+      updateAllOrganizationStatuses();
     }
   }, [profile]);
+
+  const updateAllOrganizationStatuses = async () => {
+    try {
+      // Get all organizations
+      const { data: orgs } = await supabase
+        .from('organizations')
+        .select('id');
+
+      if (orgs && orgs.length > 0) {
+        // Update each organization's subscription status
+        for (const org of orgs) {
+          await updateOrganizationSubscriptionStatus(org.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating organization statuses:', error);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch organizations
+      // Fetch organizations con suscripciones (solo datos necesarios)
       const { data: orgs, error: orgsError } = await supabase
         .from('organizations')
-        .select('*')
+        .select(`
+          *,
+          subscriptions (
+            id,
+            plan_id,
+            status,
+            end_date,
+            updated_at,
+            subscription_plans (name, price)
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (orgsError) throw orgsError;
-      if (orgs) setOrganizations(orgs);
 
-      // Fetch stats summary (simulated or real if tables exist)
+      // Asegurar que cada org tenga su array de subscriptions ordenado por updated_at
+      if (orgs) {
+        orgs.forEach((org: any) => {
+          if (org.subscriptions && Array.isArray(org.subscriptions)) {
+            org.subscriptions = org.subscriptions.sort((a: any, b: any) => {
+              const dateA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+              const dateB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+              return dateB - dateA;
+            });
+          }
+        });
+      }
+
+      // Calcular stats básicos de organizaciones
       const active = orgs?.filter(o => o.subscription_status === 'active').length || 0;
-      const trial = orgs?.filter(o => o.subscription_status === 'trial').length || 0;
-      const pastDue = orgs?.filter(o => o.subscription_status === 'past_due').length || 0;
+      const pending_validation = orgs?.filter(o => o.subscription_status === 'pending_validation').length || 0;
+      const cancelled = orgs?.filter(o => o.subscription_status === 'cancelled').length || 0;
+      const pastDue = orgs?.filter(o => o.subscription_status === 'past_due' || o.subscription_status === 'expired').length || 0;
+      const inactive = orgs?.filter(o => o.subscription_status === 'inactive' || !o.subscription_status).length || 0;
 
-      // Intentar obtener conteo de usuarios total
+      // Obtener conteo de usuarios de forma eficiente
       const { count: usersCount } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true });
 
-      // Fetch real revenue from completed payments
-      const { data: payments } = await supabase
+      // Obtener stats de reservas del mes actual (mucho más eficiente)
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+
+      // Reservas del mes
+      const { data: monthReservations } = await supabase
+        .from('reservations')
+        .select('total_cost')
+        .gte('created_at', startOfMonth)
+        .lt('created_at', endOfMonth);
+
+      const monthReservationsCount = monthReservations?.length || 0;
+      const monthReservationsValue = monthReservations?.reduce((sum, r) => sum + Number(r.total_cost || 0), 0) || 0;
+
+      // Todas las reservas para valor promedio
+      const { count: totalReservationsCount } = await supabase
+        .from('reservations')
+        .select('*', { count: 'exact', head: true });
+
+      // Pagos completados del mes
+      const { data: monthPayments } = await supabase
         .from('payments')
         .select('amount')
-        .eq('status', 'completed');
+        .eq('status', 'completed')
+        .gte('created_at', startOfMonth)
+        .lt('created_at', endOfMonth);
 
-      const totalRevenue = payments?.reduce((sum, p) => sum + Number(p.amount || 0), 0) || 0;
-      const completedPayments = payments?.length || 0;
+      const monthRevenue = monthPayments?.reduce((sum, p) => sum + Number(p.amount || 0), 0) || 0;
 
-      // Fetch reservations data
-      const { data: reservations } = await supabase
-        .from('reservations')
-        .select('total_cost');
+      // Suscripciones activas (con conteo eficiente)
+      const { count: activeSubscriptionsCount } = await supabase
+        .from('subscriptions')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
 
-      const totalReservations = reservations?.length || 0;
-      const totalResValue = reservations?.reduce((sum, r) => sum + Number(r.total_cost || 0), 0) || 0;
-      const averageReservationValue = totalReservations > 0 ? totalResValue / totalReservations : 0;
+      // Obtener revenue de suscripciones activas del mes
+      const { data: activeSubs } = await supabase
+        .from('subscriptions')
+        .select('id, status')
+        .eq('status', 'active')
+        .gte('start_date', startOfMonth);
+
+      const subscriptionRevenue = activeSubs?.length ? activeSubs.length * 50000 : 0; // Estimación simplificada
+
+      setOrganizations(orgs || []);
 
       setStats({
         total: orgs?.length || 0,
         active,
-        trial,
+        pending_validation,
+        cancelled,
         pastDue,
-        totalRevenue,
+        inactive,
+        totalRevenue: monthRevenue + subscriptionRevenue,
         totalUsers: usersCount || 0,
-        totalReservations,
-        completedPayments,
-        averageReservationValue
+        totalReservations: totalReservationsCount || 0,
+        completedPayments: monthPayments?.length || 0,
+        averageReservationValue: monthReservationsCount > 0 ? monthReservationsValue / monthReservationsCount : 0,
+        activeSubscriptions: activeSubscriptionsCount || 0,
+        subscriptionRevenue,
+        mrr: (activeSubscriptionsCount || 0) * 50000
       });
     } catch (error) {
       console.error('Error fetching super-admin data:', error);
@@ -160,9 +247,7 @@ export default function SuperAdminOrganizations() {
         phone: org.phone || '',
         address: org.address || '',
         logo_url: org.logo_url || '',
-        login_photo_url: org.login_photo_url || '',
-        subscription_status: org.subscription_status || 'active',
-        subscription_end_date: org.subscription_end_date ? org.subscription_end_date.split('T')[0] : ''
+        login_photo_url: org.login_photo_url || ''
       });
     } else {
       setEditingOrg(null);
@@ -173,9 +258,7 @@ export default function SuperAdminOrganizations() {
         phone: '',
         address: '',
         logo_url: '',
-        login_photo_url: '',
-        subscription_status: 'active',
-        subscription_end_date: ''
+        login_photo_url: ''
       });
     }
     setIsModalOpen(true);
@@ -186,8 +269,7 @@ export default function SuperAdminOrganizations() {
     setLoading(true);
 
     const dataToSave = {
-      ...formData,
-      subscription_end_date: formData.subscription_end_date || null
+      ...formData
     };
 
     if (editingOrg) {
@@ -250,38 +332,258 @@ export default function SuperAdminOrganizations() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleOpenSubscriptionModal = (org: any) => {
+  const handleOpenSubscriptionModal = async (org: any) => {
     setSelectedOrgForSubscription(org);
+
+    // Fetch available plans if not already loaded
+    if (plans.length === 0) {
+      const { data } = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      setPlans(data || []);
+    }
+
+    const subscription = org.subscriptions?.[0];
     setSubscriptionFormData({
-      status: org.subscription_status,
-      end_date: org.subscription_end_date ? org.subscription_end_date.split('T')[0] : ''
+      plan_id: subscription?.plan_id || '',
+      auto_renew: subscription?.auto_renew || false
     });
     setSubscriptionModalOpen(true);
   };
 
-  const extendSubscription = (months: number) => {
-    const currentDate = subscriptionFormData.end_date ? parseISO(subscriptionFormData.end_date) : new Date();
-    const newDate = addMonths(currentDate, months);
-    setSubscriptionFormData(prev => ({ ...prev, end_date: format(newDate, 'yyyy-MM-dd') }));
+
+  const updateOrganizationSubscriptionStatus = async (organizationId: string) => {
+    // Get current organization data
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('id, subscription_status')
+      .eq('id', organizationId)
+      .single();
+
+    // Get all subscriptions for this organization, ordered by updated_at descending
+    const { data: subscriptions } = await supabase
+      .from('subscriptions')
+      .select('id, status, end_date, updated_at, subscription_plans(name)')
+      .eq('organization_id', organizationId)
+      .order('updated_at', { ascending: false });
+
+    // Get the most recent subscription (by updated_at)
+    const mostRecentSubscription = subscriptions && subscriptions.length > 0 ? subscriptions[0] : null;
+
+    // Determine the status based on the most recent subscription
+    let newStatus = 'inactive';
+    let newEndDate = null;
+
+    if (mostRecentSubscription) {
+      // Map subscription status to organization status
+      switch (mostRecentSubscription.status) {
+        case 'active':
+          // Check if expired
+          const endDate = new Date(mostRecentSubscription.end_date);
+          const now = new Date();
+          const isExpired = endDate < now;
+          
+          if (isExpired) {
+            newStatus = 'past_due';
+          } else {
+            // Check for pending payments
+            const { data: pendingPayments } = await supabase
+              .from('subscription_payments')
+              .select('id')
+              .eq('subscription_id', mostRecentSubscription.id)
+              .eq('status', 'pending');
+            
+            if (pendingPayments && pendingPayments.length > 0) {
+              newStatus = 'pending_validation';
+            } else {
+              // Check if expiring soon
+              const daysUntilExpiry = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+              if (daysUntilExpiry <= 7) {
+                newStatus = 'pending_validation';
+              } else {
+                newStatus = 'active';
+              }
+            }
+          }
+          break;
+        case 'pending':
+          newStatus = 'pending_validation';
+          break;
+        case 'cancelled':
+          newStatus = 'cancelled';
+          break;
+        case 'expired':
+          newStatus = 'past_due';
+          break;
+        default:
+          newStatus = 'inactive';
+      }
+      
+      newEndDate = mostRecentSubscription.end_date;
+    }
+
+    // Only update if the status is different
+    if (org && org.subscription_status !== newStatus) {
+      const { error } = await supabase
+        .from('organizations')
+        .update({
+          subscription_status: newStatus,
+          subscription_end_date: newEndDate
+        })
+        .eq('id', organizationId);
+
+      if (error) {
+        console.error('Error updating organization subscription status:', error);
+      }
+    }
+  };
+
+  const handleRenewSubscription = async (subscription: any) => {
+    if (window.confirm('¿Deseas renovar esta suscripción por otro período? Se extenderá la fecha de vencimiento según la duración del plan.')) {
+      try {
+        const plan = subscription.subscription_plans;
+        const currentEndDate = new Date(subscription.end_date);
+        const newEndDate = new Date(currentEndDate.getTime() + plan.duration_in_days * 24 * 60 * 60 * 1000);
+
+        const { error } = await supabase
+          .from('subscriptions')
+          .update({
+            end_date: newEndDate.toISOString(),
+            status: 'active'
+          })
+          .eq('id', subscription.id);
+
+        if (error) throw error;
+
+        // Create renewal payment record
+        if (plan.price > 0) {
+          const { error: paymentError } = await supabase
+            .from('subscription_payments')
+            .insert({
+              subscription_id: subscription.id,
+              amount: plan.price,
+              payment_method: 'subscription_renewal',
+              status: 'pending',
+              paid_at: null
+            });
+
+          if (paymentError) {
+            console.error('Error creating renewal payment:', paymentError);
+          }
+        }
+
+        // Update organization's subscription status
+        await updateOrganizationSubscriptionStatus(selectedOrgForSubscription.id);
+
+        setSubscriptionModalOpen(false);
+        fetchData();
+      } catch (error: any) {
+        console.error('Error renewing subscription:', error);
+        alert('Error al renovar la suscripción: ' + error.message);
+      }
+    }
+  };
+
+  const handleCancelSubscription = async (subscriptionId: string) => {
+    if (window.confirm('¿Estás seguro de cancelar esta suscripción? La organización perderá acceso a las funcionalidades premium.')) {
+      try {
+        // Update subscription status to cancelled
+        const { error } = await supabase
+          .from('subscriptions')
+          .update({ status: 'cancelled' })
+          .eq('id', subscriptionId);
+
+        if (error) throw error;
+
+        // Cancel any pending payments for this subscription
+        const { error: paymentError } = await supabase
+          .from('subscription_payments')
+          .update({ status: 'cancelled' })
+          .eq('subscription_id', subscriptionId)
+          .eq('status', 'pending');
+
+        if (paymentError) {
+          console.error('Error cancelling payments:', paymentError);
+          // Don't fail the cancellation if payment update fails
+        }
+
+        // Update organization's subscription status
+        await updateOrganizationSubscriptionStatus(selectedOrgForSubscription.id);
+
+        setSubscriptionModalOpen(false);
+        fetchData();
+      } catch (error: any) {
+        console.error('Error cancelling subscription:', error);
+        alert('Error al cancelar la suscripción: ' + error.message);
+      }
+    }
   };
 
   const handleSubscriptionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase
-      .from('organizations')
-      .update({
-        subscription_status: subscriptionFormData.status,
-        subscription_end_date: subscriptionFormData.end_date || null
-      })
-      .eq('id', selectedOrgForSubscription.id);
+    try {
+      const selectedPlan = plans.find(p => p.id === subscriptionFormData.plan_id);
+      if (!selectedPlan) {
+        alert('Por favor selecciona un plan válido');
+        return;
+      }
 
-    if (!error) {
+      // Always create a new subscription (never update existing)
+      const startDate = new Date().toISOString();
+      const endDate = new Date(Date.now() + selectedPlan.duration_in_days * 24 * 60 * 60 * 1000).toISOString();
+
+      // Set subscription status based on whether payment is required
+      const subscriptionStatus = selectedPlan.price > 0 ? 'pending' : 'active';
+
+      const { data: subscription, error } = await supabase
+        .from('subscriptions')
+        .insert({
+          organization_id: selectedOrgForSubscription.id,
+          plan_id: subscriptionFormData.plan_id,
+          start_date: startDate,
+          end_date: endDate,
+          status: subscriptionStatus,
+          auto_renew: subscriptionFormData.auto_renew
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Create initial payment record if payment is required
+      if (subscription && selectedPlan.price > 0) {
+        const { error: paymentError } = await supabase
+          .from('subscription_payments')
+          .insert({
+            subscription_id: subscription.id,
+            amount: selectedPlan.price,
+            payment_method: 'subscription_assignment',
+            status: 'pending', // Pending until authorized
+            paid_at: null
+          });
+
+        if (paymentError) {
+          console.error('Error creating subscription payment:', paymentError);
+          // Don't fail the subscription creation
+        }
+      }
+
+      // Update organization's subscription status
+      await updateOrganizationSubscriptionStatus(selectedOrgForSubscription.id);
+
       setSubscriptionModalOpen(false);
-      fetchData();
+      // Refresh data to show updated status
+      await fetchData();
+    } catch (error: any) {
+      console.error('Error saving subscription:', error);
+      alert('Error al guardar la suscripción: ' + error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const filteredOrgs = organizations.filter(org => {
@@ -297,9 +599,10 @@ export default function SuperAdminOrganizations() {
   // Report Data
   const subscriptionData = [
     { name: 'Activas', value: stats.active },
-    { name: 'Prueba', value: stats.trial },
-    { name: 'Mora', value: stats.pastDue },
-    { name: 'Inactivas', value: stats.total - (stats.active + stats.trial + stats.pastDue) }
+    { name: 'Pendiente Validación', value: stats.pending_validation },
+    { name: 'Canceladas', value: stats.cancelled },
+    { name: 'Vencidas', value: stats.pastDue },
+    { name: 'Sin subscripción', value: stats.inactive }
   ].filter(d => d.value > 0);
 
   if (profile?.role !== 'super_admin') {
@@ -354,8 +657,8 @@ export default function SuperAdminOrganizations() {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* Stats Grid - Solo lo esencial */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-none shadow-sm bg-white p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-50 rounded-lg">
@@ -380,45 +683,12 @@ export default function SuperAdminOrganizations() {
         </Card>
         <Card className="border-none shadow-sm bg-white p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-50 rounded-lg">
-              <Users className="w-4 h-4 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Usuarios Totales</p>
-              <p className="text-xl font-bold text-gray-900">{stats.totalUsers}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="border-none shadow-sm bg-white p-4">
-          <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-50 rounded-lg">
               <TrendingUp className="w-4 h-4 text-indigo-600" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ingresos Reales</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Ingresos</p>
               <p className="text-xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue)}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="border-none shadow-sm bg-white p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-50 rounded-lg">
-              <PieChart className="w-4 h-4 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Reservas</p>
-              <p className="text-xl font-bold text-gray-900">{stats.totalReservations}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="border-none shadow-sm bg-white p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-orange-50 rounded-lg">
-              <BarChart3 className="w-4 h-4 text-orange-600" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Valor Promedio</p>
-              <p className="text-xl font-bold text-gray-900">{formatCurrency(stats.averageReservationValue)}</p>
             </div>
           </div>
         </Card>
@@ -444,10 +714,11 @@ export default function SuperAdminOrganizations() {
                   className="h-10 rounded-xl border border-gray-200 px-3 text-xs font-bold text-gray-600 bg-white outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
                   <option value="all">Todos los estados</option>
-                  <option value="active">Activas</option>
-                  <option value="trial">En prueba</option>
-                  <option value="past_due">En mora</option>
-                  <option value="inactive">Inactivas</option>
+                  <option value="active">Activa</option>
+                  <option value="pending_validation">Pendiente Validación</option>
+                  <option value="cancelled">Cancelada</option>
+                  <option value="past_due">Vencida</option>
+                  <option value="inactive">Sin subscripción</option>
                 </select>
               </div>
             </div>
@@ -480,10 +751,13 @@ export default function SuperAdminOrganizations() {
                     </tr>
                   ) : (
                     filteredOrgs.map((org) => {
-                      const daysUntilRenewal = org.subscription_end_date 
-                        ? differenceInDays(parseISO(org.subscription_end_date), new Date()) 
+                      // Find the most relevant subscription for display (most recent by updated_at)
+                      const subscription = org.subscriptions?.sort((a: Subscription, b: Subscription) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0] || null;
+
+                      const daysUntilRenewal = subscription?.end_date
+                        ? differenceInDays(parseISO(subscription.end_date), new Date())
                         : null;
-                      const isExpired = org.subscription_end_date ? isPast(parseISO(org.subscription_end_date)) : false;
+                      const isExpired = subscription?.end_date ? isPast(parseISO(subscription.end_date)) : false;
                       const isWarning = daysUntilRenewal !== null && daysUntilRenewal <= 7 && daysUntilRenewal > 0;
 
                       return (
@@ -517,37 +791,43 @@ export default function SuperAdminOrganizations() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex flex-col gap-1.5">
-                            <div className={cn(
-                              "inline-flex items-center w-fit rounded-full px-2 py-0.5 text-[10px] font-bold border uppercase",
-                              org.subscription_status === 'active'
-                                ? "bg-green-50 text-green-700 border-green-100"
-                                : org.subscription_status === 'past_due'
-                                ? "bg-red-50 text-red-700 border-red-100"
-                                : "bg-gray-50 text-gray-500 border-gray-100"
-                            )}>
-                              {org.subscription_status === 'active' && <CheckCircle2 className="w-3 h-3 mr-1" />}
-                              {org.subscription_status === 'past_due' && <AlertCircle className="w-3 h-3 mr-1" />}
-                              {org.subscription_status}
-                            </div>
-                            
-                            {org.subscription_end_date ? (
-                              <div className={cn(
-                                "flex items-center text-[10px] font-medium",
-                                isExpired ? "text-red-600" : isWarning ? "text-amber-600" : "text-gray-500"
-                              )}>
-                                {isExpired ? (
-                                  <AlertCircle className="w-3 h-3 mr-1" />
-                                ) : isWarning ? (
-                                  <Clock className="w-3 h-3 mr-1" />
-                                ) : (
-                                  <Calendar className="w-3 h-3 mr-1" />
-                                )}
-                                {formatDate(org.subscription_end_date)}
-                                {isWarning && !isExpired && ` (En ${daysUntilRenewal}d)`}
-                                {isExpired && " (Vencido)"}
-                              </div>
+                            {subscription ? (
+                              <>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {subscription.subscription_plans?.name || 'Plan desconocido'}
+                                </div>
+                                <div className={cn(
+                                  "inline-flex items-center w-fit rounded-full px-2 py-0.5 text-[10px] font-bold border uppercase",
+                                  subscription.status === 'active' && !isExpired
+                                    ? "bg-green-50 text-green-700 border-green-100"
+                                    : subscription.status === 'active' && isExpired
+                                    ? "bg-red-50 text-red-700 border-red-100"
+                                    : subscription.status === 'pending'
+                                    ? "bg-yellow-50 text-yellow-700 border-yellow-100"
+                                    : "bg-gray-50 text-gray-500 border-gray-100"
+                                )}>
+                                  {subscription.status === 'active' && !isExpired && <CheckCircle2 className="w-3 h-3 mr-1" />}
+                                  {(subscription.status === 'active' && isExpired) && <AlertCircle className="w-3 h-3 mr-1" />}
+                                  {subscription.status}
+                                </div>
+                                <div className={cn(
+                                  "flex items-center text-[10px] font-medium",
+                                  isExpired ? "text-red-600" : isWarning ? "text-amber-600" : "text-gray-500"
+                                )}>
+                                  {isExpired ? (
+                                    <AlertCircle className="w-3 h-3 mr-1" />
+                                  ) : isWarning ? (
+                                    <Clock className="w-3 h-3 mr-1" />
+                                  ) : (
+                                    <Calendar className="w-3 h-3 mr-1" />
+                                  )}
+                                  {formatDate(subscription.end_date)}
+                                  {isWarning && !isExpired && ` (En ${daysUntilRenewal}d)`}
+                                  {isExpired && " (Vencido)"}
+                                </div>
+                              </>
                             ) : (
-                              <div className="text-[10px] text-gray-400 italic">No asignada</div>
+                              <div className="text-[10px] text-gray-400 italic">Sin suscripción</div>
                             )}
                           </div>
                         </td>
@@ -698,9 +978,12 @@ export default function SuperAdminOrganizations() {
                   </div>
                   <div className={cn(
                     "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border",
-                    org.subscription_status === 'active' ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-700 border-red-100"
+                    org.subscription_status === 'active' ? "bg-green-50 text-green-700 border-green-100" : 
+                    org.subscription_status === 'pending_validation' ? "bg-yellow-50 text-yellow-700 border-yellow-100" :
+                    org.subscription_status === 'past_due' || org.subscription_status === 'expired' ? "bg-red-50 text-red-700 border-red-100" :
+                    "bg-gray-50 text-gray-500 border-gray-100"
                   )}>
-                    {org.subscription_status}
+                    {org.subscription_status || 'sin suscripción'}
                   </div>
                 </div>
               ))}
@@ -727,8 +1010,10 @@ export default function SuperAdminOrganizations() {
                 <BarChart data={[
                   { name: 'Total Orgs', value: stats.total },
                   { name: 'Activas', value: stats.active },
-                  { name: 'En Mora', value: stats.pastDue },
-                  { name: 'En Prueba', value: stats.trial }
+                  { name: 'Pendiente Validación', value: stats.pending_validation },
+                  { name: 'Canceladas', value: stats.cancelled },
+                  { name: 'Vencidas', value: stats.pastDue },
+                  { name: 'Sin subscripción', value: stats.inactive }
                 ]}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#64748b'}} />
@@ -812,31 +1097,6 @@ export default function SuperAdminOrganizations() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Estado Suscripción</Label>
-                  <select
-                    value={formData.subscription_status}
-                    onChange={e => setFormData({ ...formData, subscription_status: e.target.value })}
-                    className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
-                  >
-                    <option value="active">Activa</option>
-                    <option value="inactive">Inactiva</option>
-                    <option value="trial">Prueba</option>
-                    <option value="past_due">Mora (Pendiente Pago)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Fecha de Renovación</Label>
-                  <Input
-                    type="date"
-                    value={formData.subscription_end_date}
-                    onChange={e => setFormData({ ...formData, subscription_end_date: e.target.value })}
-                    className="h-11 rounded-xl"
-                  />
-                </div>
-                <div className="space-y-1.5">
                   <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Teléfono</Label>
                   <Input
                     value={formData.phone}
@@ -900,87 +1160,117 @@ export default function SuperAdminOrganizations() {
             </div>
 
             <form onSubmit={handleSubscriptionSubmit} className="p-8 space-y-6">
-              {/* Current Status */}
-              <div className="p-4 bg-gray-50 rounded-xl">
-                <div className="text-sm font-bold text-gray-700 mb-2">Estado Actual</div>
-                <div className="flex items-center gap-2">
-                  <div className={cn(
-                    "inline-flex items-center w-fit rounded-full px-2 py-0.5 text-[10px] font-bold border uppercase",
-                    selectedOrgForSubscription.subscription_status === 'active'
-                      ? "bg-green-50 text-green-700 border-green-100"
-                      : selectedOrgForSubscription.subscription_status === 'past_due'
-                      ? "bg-red-50 text-red-700 border-red-100"
-                      : "bg-gray-50 text-gray-500 border-gray-100"
-                  )}>
-                    {selectedOrgForSubscription.subscription_status === 'active' && <CheckCircle2 className="w-3 h-3 mr-1" />}
-                    {selectedOrgForSubscription.subscription_status === 'past_due' && <AlertCircle className="w-3 h-3 mr-1" />}
-                    {selectedOrgForSubscription.subscription_status}
-                  </div>
-                  {selectedOrgForSubscription.subscription_end_date && (
-                    <span className="text-xs text-gray-500">
-                      Hasta {formatDate(selectedOrgForSubscription.subscription_end_date)}
-                    </span>
-                  )}
-                </div>
-              </div>
+              {/* Current Subscription - Only show if not cancelled */}
+              {selectedOrgForSubscription.subscription_status !== 'cancelled' && (
+                <div className="p-4 bg-gray-50 rounded-xl">
+                  <div className="text-sm font-bold text-gray-700 mb-2">Suscripción Actual</div>
+                  {(() => {
+                    // Get ALL subscriptions sorted by updated_at (most recent first)
+                    const allSubscriptions = selectedOrgForSubscription.subscriptions?.sort((a: Subscription, b: Subscription) =>
+                      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+                    ) || [];
+                    
+                    // Get the most recent subscription (by updated_at)
+                    const displaySubscription = allSubscriptions[0] || null;
 
-              {/* New Status */}
+                    return displaySubscription ? (
+                      <div className="space-y-1">
+                        <div className="font-medium text-gray-900">
+                          {displaySubscription.subscription_plans?.name || 'Plan desconocido'}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">
+                            Vence: {formatDate(displaySubscription.end_date)}
+                          </span>
+                          <span className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase",
+                            displaySubscription.status === 'active' ? "bg-green-50 text-green-700" :
+                            displaySubscription.status === 'pending' ? "bg-yellow-50 text-yellow-700" :
+                            displaySubscription.status === 'cancelled' ? "bg-red-50 text-red-700" :
+                            "bg-red-50 text-red-700"
+                          )}>
+                            {displaySubscription.status}
+                          </span>
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          {(() => {
+                            const endDate = new Date(displaySubscription.end_date);
+                            const now = new Date();
+                            const daysUntilExpiry = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                            const isExpired = daysUntilExpiry < 0;
+                            const isExpiringSoon = daysUntilExpiry <= 7 && daysUntilExpiry >= 0;
+
+                            return displaySubscription.status === 'active' && (isExpired || isExpiringSoon) && (
+                              <Button
+                                type="button"
+                                variant="default"
+                                size="sm"
+                                className="h-7 text-xs bg-green-600 hover:bg-green-700"
+                                onClick={() => handleRenewSubscription(displaySubscription)}
+                              >
+                                Renovar Suscripción
+                              </Button>
+                            );
+                          })()}
+                          {displaySubscription.status !== 'cancelled' && displaySubscription.status !== 'expired' && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => handleCancelSubscription(displaySubscription.id)}
+                            >
+                              Cancelar Suscripción
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">Sin suscripción</div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Show cancelled status message */}
+              {selectedOrgForSubscription.subscription_status === 'cancelled' && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <div className="text-sm font-bold text-red-700 mb-2">Suscripción Cancelada</div>
+                  <div className="text-sm text-red-600">
+                    Esta organización tiene su suscripción cancelada. Puede asignar una nueva suscripción seleccionando un plan abajo.
+                  </div>
+                </div>
+              )}
+
+              {/* Plan Selection */}
               <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Nuevo Estado</Label>
+                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Plan de Suscripción</Label>
                 <select
-                  value={subscriptionFormData.status}
-                  onChange={e => setSubscriptionFormData({ ...subscriptionFormData, status: e.target.value })}
+                  value={subscriptionFormData.plan_id}
+                  onChange={e => setSubscriptionFormData({ ...subscriptionFormData, plan_id: e.target.value })}
                   className="w-full h-11 rounded-xl border border-gray-200 px-3 text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                  required
                 >
-                  <option value="active">Activa</option>
-                  <option value="inactive">Inactiva</option>
-                  <option value="trial">Prueba</option>
-                  <option value="past_due">Mora (Pendiente Pago)</option>
+                  <option value="">Seleccionar plan</option>
+                  {plans.map(plan => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name} - {formatCurrency(plan.price)} ({plan.duration_in_days} días)
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              {/* New End Date */}
-              <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Fecha de Vencimiento</Label>
-                <Input
-                  type="date"
-                  value={subscriptionFormData.end_date}
-                  onChange={e => setSubscriptionFormData({ ...subscriptionFormData, end_date: e.target.value })}
-                  className="h-11 rounded-xl"
-                />
-              </div>
-
-              {/* Quick Extend Options */}
+              {/* Auto Renew */}
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Extender Rápidamente</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => extendSubscription(1)}
-                    className="flex-1 h-9 text-xs font-bold rounded-lg"
-                  >
-                    +1 Mes
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => extendSubscription(3)}
-                    className="flex-1 h-9 text-xs font-bold rounded-lg"
-                  >
-                    +3 Meses
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => extendSubscription(12)}
-                    className="flex-1 h-9 text-xs font-bold rounded-lg"
-                  >
-                    +1 Año
-                  </Button>
+                <Label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Renovación Automática</Label>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={subscriptionFormData.auto_renew}
+                    onCheckedChange={checked => setSubscriptionFormData({ ...subscriptionFormData, auto_renew: checked })}
+                  />
+                  <span className="text-sm text-gray-600">
+                    Renovar automáticamente al vencer
+                  </span>
                 </div>
               </div>
 
@@ -993,7 +1283,7 @@ export default function SuperAdminOrganizations() {
                   disabled={loading}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[120px] rounded-xl font-bold shadow-lg shadow-indigo-500/20"
                 >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Actualizar'}
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar'}
                 </Button>
               </div>
             </form>

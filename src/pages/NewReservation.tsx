@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { formatCurrency, cn, detoxTime } from '@/lib/utils';
 import {
   Clock,
@@ -20,7 +20,8 @@ import {
   Moon,
   Calendar,
   Users,
-  Search
+  Search,
+  HelpCircle
 } from 'lucide-react';
 import { AlertDialog } from '@/components/ui/alert-dialog';
 import { format, addHours, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isToday, addMonths, subMonths } from 'date-fns';
@@ -28,6 +29,7 @@ import { es } from 'date-fns/locale';
 
 export default function NewReservationPage() {
   const { profile } = useAuth();
+  const { status: subscriptionStatus, daysUntilExpiry, loading: subscriptionLoading, previousSubscriptionExpiredBeyond20Days } = useSubscriptionStatus(profile?.organization_id);
   const navigate = useNavigate();
   const { id } = useParams();
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
@@ -37,6 +39,7 @@ export default function NewReservationPage() {
   const [areas, setAreas] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedArea, setSelectedArea] = useState<any>(null);
+  const isFree = selectedArea?.is_free || false;
   const [searchParams] = useSearchParams();
   const initialDate = searchParams.get('date');
   
@@ -50,7 +53,6 @@ export default function NewReservationPage() {
 
   // Para admins: seleccionar usuario para la reserva
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [isFreeReservation, setIsFreeReservation] = useState(false);
   const [userSearchTerm, setUserSearchTerm] = useState<string>('');
 
   const [loading, setLoading] = useState(false);
@@ -71,6 +73,17 @@ export default function NewReservationPage() {
       }
     }
   }, [profile?.organization_id, id, isAdmin, isEditing]);
+
+  useEffect(() => {
+    console.log('NewReservation: subscriptionStatus', subscriptionStatus, 'daysUntilExpiry', daysUntilExpiry, 'subscriptionLoading', subscriptionLoading, 'previousExpired', previousSubscriptionExpiredBeyond20Days);
+    if (!subscriptionLoading && (subscriptionStatus === 'inactive' || (subscriptionStatus === 'past_due' && daysUntilExpiry !== undefined && daysUntilExpiry < -20) || (subscriptionStatus === 'past_due' && previousSubscriptionExpiredBeyond20Days))) {
+      console.log('Blocking reservations');
+      setBlockingError('Servicio temporalmente inhabilitado. Si tienes dudas por favor comunícate con administración.');
+    } else if (!subscriptionLoading) {
+      console.log('Not blocking reservations');
+      setBlockingError(null);
+    }
+  }, [subscriptionStatus, daysUntilExpiry, subscriptionLoading, previousSubscriptionExpiredBeyond20Days]);
 
   const fetchReservationToEdit = async () => {
     setLoading(true);
@@ -192,6 +205,8 @@ export default function NewReservationPage() {
   };
 
   const handleAreaSelect = (area: any) => {
+    console.log('DEBUG: Selected area properties:', area);
+    console.log('Is free:', area.is_free);
     if (isAdmin && !selectedUserId) {
       setUserError('Por favor selecciona un usuario antes de elegir un área.');
       return;
@@ -244,7 +259,7 @@ export default function NewReservationPage() {
 
   // Calcular el costo total según el tipo de precio
   const calculateTotalCost = () => {
-    if (isFreeReservation) return 0;
+    if (isFree) return 0;
 
     if (!selectedArea) return 0;
 
@@ -434,7 +449,7 @@ export default function NewReservationPage() {
         return;
       }
 
-      const reservationStatus = isFreeReservation ? 'pending_validation' : 'pending_payment';
+      const reservationStatus = isFree ? 'pending_validation' : 'pending_payment';
 
       const { data, error } = await supabase
         .from('reservations')
@@ -452,7 +467,7 @@ export default function NewReservationPage() {
 
       if (error) throw error;
 
-      if (isFreeReservation) {
+      if (isFree) {
         // No payment needed, redirect to reservations list
         navigate('/reservations/my');
       } else {
@@ -472,11 +487,11 @@ export default function NewReservationPage() {
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="border-none shadow-sm bg-white text-center p-8 max-w-md">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-destructive/10 rounded-full text-destructive">
-              <AlertCircle className="w-12 h-12" />
+            <div className="p-3 bg-amber-100 rounded-full text-amber-600">
+              <HelpCircle className="w-12 h-12" />
             </div>
           </div>
-          <CardTitle className="text-xl mb-4">Acceso Bloqueado</CardTitle>
+          <CardTitle className="text-xl mb-4">¡Oops! Servicio temporalmente inhabilitado</CardTitle>
           <CardDescription className="text-base mb-6">
             {blockingError}
           </CardDescription>
@@ -634,9 +649,11 @@ export default function NewReservationPage() {
                     </div>
                   )}
                   <div className="absolute top-2 right-2 bg-primary px-3 py-1 rounded-full text-xs font-bold text-white">
-                    {area.pricing_type === 'jornada'
-                      ? 'Por Jornada'
-                      : `${formatCurrency(area.cost_per_hour)}/h`}
+                    {area.is_free 
+                      ? 'Gratuito' 
+                      : area.pricing_type === 'jornada' 
+                        ? 'Por Jornada' 
+                        : `${formatCurrency(area.cost_per_hour)}/h`}
                   </div>
                 </div>
                 <CardHeader className="p-4">
@@ -792,38 +809,25 @@ export default function NewReservationPage() {
                     </>
                   )}
                 </div>
-
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-primary/10 rounded-lg">
-                      {selectedArea.pricing_type === 'jornada' ? (
-                        <Calendar className="w-5 h-5 text-primary" />
-                      ) : (
-                        <Clock className="w-5 h-5 text-primary" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Inversión total</p>
-                      <p className="text-xl font-bold">
-                        {isFreeReservation ? 'Gratis' : formatCurrency(calculateTotalCost())}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Opción de reserva sin costo */}
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-blue-900">Reserva sin costo</p>
-                      <p className="text-xs text-blue-700">No requiere pago, queda pendiente de validación</p>
-                    </div>
-                    <Switch
-                      checked={isFreeReservation}
-                      onCheckedChange={setIsFreeReservation}
-                    />
-                  </div>
-                </div>
+{!isFree && (
+<div className="bg-gray-50 p-4 rounded-lg">
+  <div className="flex items-center gap-4">
+    <div className="p-3 bg-primary/10 rounded-lg">
+      {selectedArea.pricing_type === 'jornada' ? (
+        <Calendar className="w-5 h-5 text-primary" />
+      ) : (
+        <Clock className="w-5 h-5 text-primary" />
+      )}
+    </div>
+    <div>
+      <p className="text-xs text-gray-500">Inversión total</p>
+      <p className="text-xl font-bold">
+        {formatCurrency(calculateTotalCost())}
+      </p>
+    </div>
+  </div>
+</div>
+)}
               </div>
 
               <div className="space-y-4">
@@ -875,7 +879,7 @@ export default function NewReservationPage() {
                               <div className="text-xs opacity-80">{startTime} - {endTime}</div>
                             </div>
                             <div className="ml-auto font-bold">
-                              {formatCurrency(selectedArea.cost_jornada_diurna || 0)}
+                              {isFree ? 'Gratis' : formatCurrency(selectedArea.cost_jornada_diurna || 0)}
                             </div>
                           </Button>
                           
@@ -932,7 +936,7 @@ export default function NewReservationPage() {
                               <div className="text-xs opacity-80">{startTime} - {endTime}</div>
                             </div>
                             <div className="ml-auto font-bold">
-                              {formatCurrency(selectedArea.cost_jornada_nocturna || 0)}
+                              {isFree ? 'Gratis' : formatCurrency(selectedArea.cost_jornada_nocturna || 0)}
                             </div>
                           </Button>
                           
@@ -989,7 +993,7 @@ export default function NewReservationPage() {
                               <div className="text-xs opacity-80">{startTime} - {endTime}</div>
                             </div>
                             <div className="ml-auto font-bold">
-                              {formatCurrency(selectedArea.cost_jornada_ambos || 0)}
+                              {isFree ? 'Gratis' : formatCurrency(selectedArea.cost_jornada_ambos || 0)}
                             </div>
                           </Button>
                           
@@ -1146,25 +1150,25 @@ export default function NewReservationPage() {
                 <span className="font-medium">{selectedStartTime}</span>
               </div>
               <div className="flex justify-between items-center pt-2">
-                <span className="text-sm font-medium">{isFreeReservation ? 'Costo' : 'Total a pagar'}</span>
+                <span className="text-sm font-medium">{isFree ? 'Costo' : 'Total a pagar'}</span>
                 <span className="text-lg font-bold text-primary">
-                  {isFreeReservation ? 'Gratis' : formatCurrency(calculateTotalCost())}
+                  {isFree ? 'Gratis' : formatCurrency(calculateTotalCost())}
                 </span>
               </div>
             </div>
 
             <div className={cn(
               "border rounded-lg p-3 flex gap-3",
-              isFreeReservation
+              isFree
                 ? "bg-blue-50 border-blue-200"
                 : "bg-amber-50 border-amber-200"
             )}>
               <AlertCircle className={cn(
                 "w-5 h-5 shrink-0",
-                isFreeReservation ? "text-blue-500" : "text-amber-500"
+                isFree ? "text-blue-500" : "text-amber-500"
               )} />
               <p className="text-sm text-gray-600">
-                {isFreeReservation
+                {isFree
                   ? "Al confirmar, se generará la reserva pendiente de validación sin costo adicional."
                   : "Al confirmar, se generará una solicitud pendiente de validación. Tienes 15 minutos para completar la transacción."
                 }
@@ -1173,7 +1177,7 @@ export default function NewReservationPage() {
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
             <Button className="w-full" onClick={handleReserve} disabled={loading}>
-              {loading ? "Procesando..." : isFreeReservation ? "Confirmar Reserva Gratis" : "Confirmar y proceder al pago"}
+              {loading ? "Procesando..." : isFree ? "Confirmar Reserva Gratis" : "Confirmar y proceder al pago"}
             </Button>
             <Button variant="ghost" className="w-full" onClick={() => setStep(2)}>
               <ChevronLeft className="w-4 h-4 mr-2" />

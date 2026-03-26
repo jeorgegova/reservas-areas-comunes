@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,7 @@ import {
 
 export default function AdminReservationsPage() {
   const { profile } = useAuth();
+  const { status: subscriptionStatus, daysUntilExpiry, previousSubscriptionExpiredBeyond20Days } = useSubscriptionStatus(profile?.organization_id);
   const [reservations, setReservations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,16 +59,51 @@ export default function AdminReservationsPage() {
   };
 
   const handleUpdateStatus = async (id: string, newStatus: string) => {
-    const { error } = await supabase
+    // First update the reservation status
+    const { error: updateError } = await supabase
       .from('reservations')
-      .update({ 
+      .update({
         status: newStatus,
         updated_at: format(new Date(), "yyyy-MM-dd'T'HH:mm:ss")
       })
       .eq('id', id)
       .eq('organization_id', profile?.organization_id);
 
-    if (!error) fetchReservations();
+    if (updateError) {
+      console.error('Error updating reservation:', updateError);
+      return;
+    }
+
+    // If approving, create a payment record
+    if (newStatus === 'approved') {
+      // Get the reservation details to create payment
+      const { data: reservation } = await supabase
+        .from('reservations')
+        .select('total_cost')
+        .eq('id', id)
+        .single();
+
+      if (reservation && reservation.total_cost > 0) {
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .insert({
+            reservation_id: id,
+            amount: reservation.total_cost,
+            payment_method: 'admin_approval', // or whatever method
+            status: 'completed',
+            validated_by: profile?.id,
+            validated_at: new Date().toISOString()
+          });
+
+        if (paymentError) {
+          console.error('Error creating payment:', paymentError);
+          // Note: We don't fail the approval if payment creation fails
+          // Could add user notification here
+        }
+      }
+    }
+
+    fetchReservations();
   };
 
   const filteredReservations = reservations.filter(res => 
@@ -88,6 +125,13 @@ export default function AdminReservationsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Reservas</h1>
             <p className="text-gray-500 text-sm">Valida y gestiona las solicitudes del conjunto.</p>
+            {subscriptionStatus !== 'active' && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-2">
+                <p className="text-sm text-yellow-800">
+                  La suscripción no está activa. Las funcionalidades de gestión de reservas están restringidas.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -196,17 +240,19 @@ export default function AdminReservationsPage() {
                         <div className="flex justify-end gap-2">
                           {res.status === 'pending_validation' && (
                             <>
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
+                                disabled={subscriptionStatus === 'inactive' || (subscriptionStatus === 'past_due' && daysUntilExpiry !== undefined && daysUntilExpiry < -20) || previousSubscriptionExpiredBeyond20Days}
                                 className="h-8 px-3 bg-green-600 hover:bg-green-700 text-xs font-medium shadow-lg shadow-green-500/25"
                                 onClick={() => handleUpdateStatus(res.id, 'approved')}
                               >
                                 <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
                                 Aprobar
                               </Button>
-                              <Button 
-                                size="sm" 
-                                variant="destructive" 
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={subscriptionStatus === 'inactive' || (subscriptionStatus === 'past_due' && daysUntilExpiry !== undefined && daysUntilExpiry < -20) || previousSubscriptionExpiredBeyond20Days}
                                 className="h-8 px-3 text-xs font-medium"
                                 onClick={() => handleUpdateStatus(res.id, 'rejected')}
                               >

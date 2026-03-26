@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Plus,
   Building2,
@@ -81,12 +82,9 @@ export default function AdminAreasPage() {
     cost_jornada_ambos: 0,
     jornada_hours_diurna: 10,
     jornada_hours_nocturna: 6,
-    jornada_start_diurna: '08:00',
-    jornada_end_diurna: '18:00',
-    jornada_start_nocturna: '18:00',
-    jornada_end_nocturna: '23:59',
     image_url: '',
-    is_active: true
+    is_active: true,
+    is_free: false
   });
 
   useEffect(() => {
@@ -112,29 +110,42 @@ export default function AdminAreasPage() {
 
     const orgId = profile?.organization_id;
 
+    // Si is_free es true, seteamos todos los costos a 0
+    const isFree = currentArea.is_free || false;
+    
     // Filtrar solo los campos que existen en la tabla common_areas
     const areaData = {
       name: currentArea.name,
       description: currentArea.description || null,
       max_hours_per_reservation: currentArea.max_hours_per_reservation || 4,
-      cost_per_hour: currentArea.cost_per_hour || 0,
+      cost_per_hour: isFree ? 0 : (currentArea.cost_per_hour || 0),
       pricing_type: currentArea.pricing_type || 'hourly',
-      cost_jornada_diurna: currentArea.cost_jornada_diurna || 0,
-      cost_jornada_nocturna: currentArea.cost_jornada_nocturna || 0,
-      cost_jornada_ambos: currentArea.cost_jornada_ambos || 0,
+      cost_jornada_diurna: isFree ? 0 : (currentArea.cost_jornada_diurna || 0),
+      cost_jornada_nocturna: isFree ? 0 : (currentArea.cost_jornada_nocturna || 0),
+      cost_jornada_ambos: isFree ? 0 : (currentArea.cost_jornada_ambos || 0),
       jornada_hours_diurna: currentArea.jornada_hours_diurna || 10,
       jornada_hours_nocturna: currentArea.jornada_hours_nocturna || 6,
       image_url: currentArea.image_url || null,
       is_active: currentArea.is_active !== false,
+      is_free: isFree,
       organization_id: orgId
     };
 
+    console.log('Area data to save:', areaData);
+
     if (currentArea.id) {
-      await supabase
-        .from('common_areas')
-        .update(areaData)
-        .eq('id', currentArea.id)
-        .eq('organization_id', orgId);
+      try {
+        const { error } = await supabase
+          .from('common_areas')
+          .update(areaData)
+          .eq('id', currentArea.id)
+          .eq('organization_id', orgId);
+        if (error) throw error;
+      } catch (error: any) {
+        console.error('Error updating area:', error);
+        alert('Error updating area: ' + error.message);
+        return;
+      }
     } else {
       await supabase
         .from('common_areas')
@@ -177,9 +188,7 @@ export default function AdminAreasPage() {
               name: '', description: '', max_hours_per_reservation: 4, cost_per_hour: 0,
               pricing_type: 'hourly', cost_jornada_diurna: 0, cost_jornada_nocturna: 0,
               cost_jornada_ambos: 0, jornada_hours_diurna: 10, jornada_hours_nocturna: 6,
-              jornada_start_diurna: '08:00', jornada_end_diurna: '18:00',
-              jornada_start_nocturna: '18:00', jornada_end_nocturna: '23:59',
-              image_url: '', is_active: true
+              image_url: '', is_active: true, is_free: false
             });
             setIsEditing(true);
           }}
@@ -240,6 +249,13 @@ export default function AdminAreasPage() {
                       <option value="jornada">Por Jornada (Día/Noche)</option>
                     </select>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={currentArea.is_free}
+                      onCheckedChange={(checked) => setCurrentArea({ ...currentArea, is_free: checked })}
+                    />
+                    <Label className="text-sm text-gray-600 cursor-pointer">Reserva sin costo</Label>
+                  </div>
 
                   {currentArea.pricing_type === 'hourly' ? (
                     <>
@@ -253,6 +269,7 @@ export default function AdminAreasPage() {
                           className="h-10 rounded-lg text-sm"
                         />
                       </div>
+                      {!currentArea.is_free && (
                       <div className="space-y-1.5">
                         <Label className="text-[10px] uppercase font-bold text-gray-400">Costo Hora</Label>
                         <CurrencyInput
@@ -261,6 +278,7 @@ export default function AdminAreasPage() {
                           className="h-10 rounded-lg text-sm"
                         />
                       </div>
+                      )}
                     </>
                   ) : (
                     <>
@@ -291,6 +309,7 @@ export default function AdminAreasPage() {
                               />
                             </div>
                           </div>
+                          {!currentArea.is_free && (
                           <div className="space-y-1">
                             <Label className="text-[9px] uppercase font-bold text-gray-400">Costo</Label>
                             <CurrencyInput
@@ -299,6 +318,7 @@ export default function AdminAreasPage() {
                               className="h-8 rounded-lg text-xs"
                             />
                           </div>
+                          )}
                         </div>
 
                         {/* Jornada Nocturna */}
@@ -327,6 +347,7 @@ export default function AdminAreasPage() {
                               />
                             </div>
                           </div>
+                          {!currentArea.is_free && (
                           <div className="space-y-1">
                             <Label className="text-[9px] uppercase font-bold text-gray-400">Costo</Label>
                             <CurrencyInput
@@ -335,6 +356,7 @@ export default function AdminAreasPage() {
                               className="h-8 rounded-lg text-xs"
                             />
                           </div>
+                          )}
                         </div>
 
                         {/* Día Completo */}
@@ -344,6 +366,7 @@ export default function AdminAreasPage() {
                             <span className="text-xs font-bold uppercase">Completo</span>
                           </div>
                           <div className="h-[62px]"></div>
+                          {!currentArea.is_free && (
                           <div className="space-y-1">
                             <Label className="text-[9px] uppercase font-bold text-gray-400">Costo</Label>
                             <CurrencyInput
@@ -352,6 +375,7 @@ export default function AdminAreasPage() {
                               className="h-8 rounded-lg text-xs"
                             />
                           </div>
+                          )}
                         </div>
                       </div>
                     </>

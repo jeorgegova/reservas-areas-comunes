@@ -12,7 +12,10 @@ import MyReservationsPage from './pages/MyReservations';
 import AdminReservationsPage from './pages/admin/AdminReservations';
 import AdminAreasPage from './pages/admin/AdminAreas';
 import AdminUsersPage from './pages/admin/AdminUsers';
+import AdminSubscriptionPage from './pages/admin/AdminSubscription';
 import SuperAdminOrganizations from './pages/super-admin/Organizations';
+import SuperAdminSubscriptionPlans from './pages/super-admin/SubscriptionPlans';
+import SuperAdminSubscriptionPayments from './pages/super-admin/SubscriptionPayments';
 import ProfilePage from './pages/Profile';
 import MaintenancePage from './pages/Maintenance';
 import PaymentMockPage from './pages/PaymentMock';
@@ -181,6 +184,16 @@ function App() {
               </PrivateRoute>
             }
           />
+          <Route
+            path="/admin/subscription"
+            element={
+              <PrivateRoute adminOnly>
+                <DashboardLayout>
+                  <AdminSubscriptionPage />
+                </DashboardLayout>
+              </PrivateRoute>
+            }
+          />
 
           <Route
             path="/super-admin/organizations"
@@ -188,6 +201,26 @@ function App() {
               <SuperAdminRoute>
                 <DashboardLayout>
                   <SuperAdminOrganizations />
+                </DashboardLayout>
+              </SuperAdminRoute>
+            }
+          />
+          <Route
+            path="/super-admin/subscription-plans"
+            element={
+              <SuperAdminRoute>
+                <DashboardLayout>
+                  <SuperAdminSubscriptionPlans />
+                </DashboardLayout>
+              </SuperAdminRoute>
+            }
+          />
+          <Route
+            path="/super-admin/subscription-payments"
+            element={
+              <SuperAdminRoute>
+                <DashboardLayout>
+                  <SuperAdminSubscriptionPayments />
                 </DashboardLayout>
               </SuperAdminRoute>
             }

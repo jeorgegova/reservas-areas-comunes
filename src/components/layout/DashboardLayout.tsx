@@ -13,11 +13,14 @@ import {
   Bell,
   Loader2,
   ShieldAlert,
-  ArrowLeft
+  ArrowLeft,
+  Crown,
+  Receipt
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { profile, signOut, loading, impersonatedOrgId, setImpersonatedOrgId } = useAuth();
@@ -26,11 +29,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [orgLoading, setOrgLoading] = useState(false);
   const navigate = useNavigate();
 
+  const orgId = (profile?.organization_id || impersonatedOrgId) as string | undefined;
+
+  // Determinar roles (considerando estado de carga)
+  const isAdmin = !loading && (profile?.role === 'admin' || profile?.role === 'super_admin');
+  const isSuperAdmin = !loading && profile?.role === 'super_admin';
+  const { status: subscriptionStatus, latestEndDate } = useSubscriptionStatus(orgId);
+
+  // Modo soporte: super_admin con organization impersonada - debe definirse ANTES del useEffect
+  const isInSupportMode = isSuperAdmin && impersonatedOrgId !== null;
+
   useEffect(() => {
     if (profile?.organization_id) {
       fetchOrganization(profile.organization_id);
     }
   }, [profile?.organization_id]);
+
+
 
   const fetchOrganization = async (orgId: string) => {
     setOrgLoading(true);
@@ -72,13 +87,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
-  // Determinar roles (considerando estado de carga)
-  const isAdmin = !loading && (profile?.role === 'admin' || profile?.role === 'super_admin');
-  const isSuperAdmin = !loading && profile?.role === 'super_admin';
-
-  // Modo soporte: super_admin con organization impersonada
-  const isInSupportMode = isSuperAdmin && impersonatedOrgId !== null;
-
   let navItems = [
     { name: 'Calendario', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Reservar', path: '/reservations/new', icon: Calendar },
@@ -90,7 +98,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Layout minimalista para super_admin sin modo soporte
   if (isSuperAdmin && !isInSupportMode) {
     navItems = [
-      { name: 'Gestión Organizaciones', path: '/super-admin/organizations', icon: Building2 },
+      { name: 'Organizaciones', path: '/super-admin/organizations', icon: Building2 },
+      { name: 'Planes de Suscripción', path: '/super-admin/subscription-plans', icon: Crown },
+      { name: 'Pagos de Suscripción', path: '/super-admin/subscription-payments', icon: Receipt },
     ];
   } else if (isAdmin) {
     const adminItems = [
@@ -99,6 +109,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       { name: 'Gestión Reservas', path: '/admin/reservations', icon: Calendar },
       { name: 'Áreas Comunes', path: '/admin/areas', icon: Building2 },
       { name: 'Usuarios', path: '/admin/users', icon: User },
+      { name: 'Suscripción', path: '/admin/subscription', icon: Crown },
     ];
 
     // Si es super_admin y está en modo soporte, añadir gestión de organizaciones al principio
@@ -114,6 +125,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setImpersonatedOrgId(null);
     navigate('/super-admin/organizations');
   };
+
+
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -230,10 +243,74 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div className="flex-1 overflow-y-auto p-6 md:p-8">
           <div className="max-w-7xl mx-auto">
+            {subscriptionStatus === 'pending_validation' && isAdmin && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-full">
+                    <ShieldAlert className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Tu suscripción requiere validación</p>
+                    <p className="text-xs text-amber-600">Contacta al administrador para completar el proceso de activación.</p>
+                  </div>
+                </div>
+                <Button size="sm" onClick={() => navigate('/admin/subscription')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Ver Detalles
+                </Button>
+              </div>
+            )}
+            {subscriptionStatus === 'past_due' && isAdmin && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-100 rounded-full">
+                    <ShieldAlert className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-red-800">Tu suscripción está vencida</p>
+                    <p className="text-xs text-red-600">
+                      {(() => {
+                        if (latestEndDate) {
+                          const endDate = new Date(latestEndDate);
+                          const now = new Date();
+                          const daysSinceExpiry = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
+                          const daysUntilSuspension = Math.max(0, 20 - daysSinceExpiry);
+                          if (daysUntilSuspension === 0) {
+                            return 'El servicio de reservas está suspendido.';
+                          }
+                          return `Renueva ahora. El servicio de reservas se suspenderá en ${daysUntilSuspension} días.`;
+                        }
+                        return 'Renueva ahora para restaurar el acceso completo a la plataforma.';
+                      })()}
+                    </p>
+                  </div>
+                </div>
+                <Button size="sm" onClick={() => navigate('/admin/subscription')} className="bg-red-600 hover:bg-red-700 text-white">
+                  Renovar
+                </Button>
+              </div>
+            )}
+            {subscriptionStatus === 'cancelled' && isAdmin && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gray-100 rounded-full">
+                    <ShieldAlert className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">Tu suscripción ha sido cancelada</p>
+                    <p className="text-xs text-gray-600">Contacta al administrador para reactivar tu cuenta.</p>
+                  </div>
+                </div>
+                <Button size="sm" onClick={() => navigate('/admin/subscription')} className="bg-gray-600 hover:bg-gray-700 text-white">
+                  Reactivar
+                </Button>
+              </div>
+            )}
             {children}
           </div>
         </div>
       </main>
+
+
 
       {/* Overlay for mobile */}
       {isSidebarOpen && (
