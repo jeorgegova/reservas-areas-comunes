@@ -56,6 +56,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchProfile = async (userId: string, isInitialLoad = false) => {
     console.log('useAuth: fetchProfile iniciando para:', userId, 'isInitialLoad:', isInitialLoad);
     
+    // Evitar múltiples llamadas si ya tenemos el perfil
+    if (profileRef.current && profileRef.current.id === userId && !isInitialLoad) {
+      console.log('useAuth: Perfil ya existe, saltando fetchProfile');
+      return;
+    }
+    
     // Solo mostramos el estado de carga global si no tenemos perfil actual o es la carga inicial
     // Esto previene que al cambiar de pestaña y que Supabase refresque el token,
     // se desmonte toda la app por el estado loading.
@@ -108,14 +114,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(currentUser);
       
       if (currentUser) {
-        // Usamos setTimeout para desacoplar completamente la carga del perfil
-        // del hilo de ejecución de onAuthStateChange
-        setTimeout(() => {
-          // Si el evento es un cambio de usuario (sign in) o carga inicial, 
-          // podríamos querer mostrar el loader, pero para TOKEN_REFRESHED no.
-          // Para simplificar, solo mostramos loader si NO hay perfil actual.
+        // Solo llamar fetchProfile en eventos específicos para evitar duplicados
+        // SIGNED_IN = nuevo inicio de sesión
+        // Ignoramos TOKEN_REFRESHED y INITIAL_SESSION si ya tenemos perfil
+        if (event === 'SIGNED_IN') {
+          console.log('useAuth: Evento SIGNED_IN, llamando fetchProfile');
           fetchProfile(currentUser.id, false);
-        }, 0);
+        } else if (event === 'SIGNED_OUT') {
+          console.log('useAuth: Evento SIGNED_OUT, limpiando perfil');
+          setProfile(null);
+          setLoading(false);
+        }
+        // Para INITIAL_SESSION y TOKEN_REFRESHED no hacemos nada si ya tenemos perfil
       } else {
         console.log('useAuth: Cambio de estado sin sesión, profile null, loading false');
         setProfile(null);

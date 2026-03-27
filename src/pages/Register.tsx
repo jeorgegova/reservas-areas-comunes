@@ -69,8 +69,18 @@ export default function RegisterPage() {
       return;
     }
 
+    // Validar que tenga organization_id
+    if (!selectedOrgId) {
+      setError('Por favor seleccione una organización');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { error } = await supabase.auth.signUp({
+      console.log('Iniciando registro con organization_id:', selectedOrgId);
+      
+      // 1. Crear el usuario en auth
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -85,11 +95,57 @@ export default function RegisterPage() {
         },
       });
 
-      if (error) throw error;
+      if (signUpError) {
+        console.error('Error en signUp:', signUpError);
+        throw signUpError;
+      }
+
+      console.log('Usuario creado en auth:', signUpData?.user?.id);
+
+      // 2. Si el usuario se creó correctamente, actualizar el perfil con el organization_id
+      if (signUpData?.user) {
+        console.log('Actualizando perfil con organization_id:', selectedOrgId);
+        
+        // Intentar upsert primero
+        const { error: upsertError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: signUpData.user.id,
+            email: email,
+            full_name: fullName,
+            phone: phone,
+            apartment: apartment,
+            organization_id: selectedOrgId,
+            role: 'user',
+          }, {
+            onConflict: 'id',
+          });
+
+        if (upsertError) {
+          console.error('Error en upsert:', upsertError);
+          
+          // Si el upsert falla (probablemente por RLS), intentar update normal
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ organization_id: selectedOrgId })
+            .eq('id', signUpData.user.id);
+
+          if (updateError) {
+            console.error('Error en update:', updateError);
+            // No throw aquí porque el usuario ya se creó correctamente
+            // El organization_id se asignará cuando confirme su email
+          } else {
+            console.log('Perfil actualizado correctamente con update');
+          }
+        } else {
+          console.log('Perfil creado/actualizado correctamente con upsert');
+        }
+      }
       
       // Redirect to login or show success message
       setIsSuccessAlertOpen(true);
     } catch (error: any) {
+      console.error('Error en registro:', error);
       setError(translateAuthError(error.message) || 'Error al registrarse');
     } finally {
       setLoading(false);

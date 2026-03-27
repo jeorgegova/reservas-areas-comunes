@@ -24,11 +24,34 @@ import {
 
 export default function AdminReservationsPage() {
   const { profile } = useAuth();
-  const { status: subscriptionStatus, daysUntilExpiry, previousSubscriptionExpiredBeyond20Days } = useSubscriptionStatus(profile?.organization_id);
+  const { status: subscriptionStatus, daysUntilExpiry, loading: subscriptionLoading, previousSubscriptionExpiredBeyond20Days } = useSubscriptionStatus(profile?.organization_id);
+  
   const [reservations, setReservations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [blockingError, setBlockingError] = useState<string | null>(null);
+
+  // Debug: mostrar loading inicial del perfil
+  useEffect(() => {
+    console.log('AdminReservations - Componente mounting');
+  }, []);
+
+  useEffect(() => {
+    console.log('AdminReservations - profile changed:', profile);
+    console.log('AdminReservations - organization_id:', profile?.organization_id);
+  }, [profile]);
+
+  useEffect(() => {
+    console.log('AdminReservations: subscriptionStatus', subscriptionStatus, 'daysUntilExpiry', daysUntilExpiry, 'subscriptionLoading', subscriptionLoading, 'previousExpired', previousSubscriptionExpiredBeyond20Days);
+    if (!subscriptionLoading && (subscriptionStatus === 'inactive' || (subscriptionStatus === 'past_due' && daysUntilExpiry !== undefined && daysUntilExpiry < -20) || (subscriptionStatus === 'past_due' && previousSubscriptionExpiredBeyond20Days))) {
+      console.log('Blocking admin reservations');
+      setBlockingError('Servicio temporalmente inhabilitado, renueva la suscripción para continuar utilizando este servicio.');
+    } else if (!subscriptionLoading) {
+      console.log('Not blocking admin reservations');
+      setBlockingError(null);
+    }
+  }, [subscriptionStatus, daysUntilExpiry, subscriptionLoading, previousSubscriptionExpiredBeyond20Days]);
 
   useEffect(() => {
     if (profile?.organization_id) {
@@ -125,11 +148,9 @@ export default function AdminReservationsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Reservas</h1>
             <p className="text-gray-500 text-sm">Valida y gestiona las solicitudes del conjunto.</p>
-            {subscriptionStatus !== 'active' && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-2">
-                <p className="text-sm text-yellow-800">
-                  La suscripción no está activa. Las funcionalidades de gestión de reservas están restringidas.
-                </p>
+            {blockingError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-2">
+                <p className="text-sm text-red-800 font-medium">{blockingError}</p>
               </div>
             )}
           </div>
@@ -242,7 +263,7 @@ export default function AdminReservationsPage() {
                             <>
                               <Button
                                 size="sm"
-                                disabled={subscriptionStatus === 'inactive' || (subscriptionStatus === 'past_due' && daysUntilExpiry !== undefined && daysUntilExpiry < -20) || previousSubscriptionExpiredBeyond20Days}
+                                disabled={!!blockingError}
                                 className="h-8 px-3 bg-green-600 hover:bg-green-700 text-xs font-medium shadow-lg shadow-green-500/25"
                                 onClick={() => handleUpdateStatus(res.id, 'approved')}
                               >
@@ -252,7 +273,7 @@ export default function AdminReservationsPage() {
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                disabled={subscriptionStatus === 'inactive' || (subscriptionStatus === 'past_due' && daysUntilExpiry !== undefined && daysUntilExpiry < -20) || previousSubscriptionExpiredBeyond20Days}
+                                disabled={!!blockingError}
                                 className="h-8 px-3 text-xs font-medium"
                                 onClick={() => handleUpdateStatus(res.id, 'rejected')}
                               >
