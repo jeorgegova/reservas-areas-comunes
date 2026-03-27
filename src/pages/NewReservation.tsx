@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { useCommonAreasQuery } from '@/hooks/useCommonAreas';
 import { useCreateReservationMutation, useUpdateReservationMutation } from '@/hooks/useReservations';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import * as reservationService from '@/services/reservations';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -45,7 +45,7 @@ export default function NewReservationPage() {
   const isFree = selectedArea?.is_free || false;
   const [searchParams] = useSearchParams();
   const initialDate = searchParams.get('date');
-  
+
   const [selectedDate, setSelectedDate] = useState<string>(initialDate || format(new Date(), 'yyyy-MM-dd'));
   const [selectedStartTime, setSelectedStartTime] = useState<string>('');
   const [duration, setDuration] = useState<number>(1);
@@ -67,10 +67,9 @@ export default function NewReservationPage() {
   const { data: areasData = [] } = useCommonAreasQuery(profile?.organization_id);
   const createMutation = useCreateReservationMutation();
   const updateMutation = useUpdateReservationMutation();
-  const queryClient = useQueryClient();
 
   // Fetch single reservation for edit using useQuery
-  const { data: reservationToEdit, isLoading: isEditLoading } = useQuery({
+  const { data: reservationToEdit } = useQuery({
     queryKey: ['reservation', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -109,7 +108,7 @@ export default function NewReservationPage() {
       const startDate = new Date(reservationToEdit.start_datetime);
       setSelectedDate(format(startDate, 'yyyy-MM-dd'));
       setSelectedStartTime(format(startDate, 'HH:mm'));
-      
+
       const endDate = new Date(reservationToEdit.end_datetime);
       const diffMs = endDate.getTime() - startDate.getTime();
       const diffHours = Math.round(diffMs / (1000 * 60 * 60));
@@ -286,7 +285,7 @@ export default function NewReservationPage() {
   const checkJornadaAvailability = () => {
     if (!selectedArea || !selectedJornada || !selectedDate) return { available: true };
 
-    const jornadaStart = selectedJornada === 'diurna' 
+    const jornadaStart = selectedJornada === 'diurna'
       ? selectedArea.jornada_start_diurna || '08:00'
       : selectedJornada === 'nocturna'
         ? selectedArea.jornada_start_nocturna || '18:00'
@@ -339,10 +338,10 @@ export default function NewReservationPage() {
 
   const fetchMonthReservations = async () => {
     if (!selectedArea) return;
-    
+
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
-    
+
     const { data } = await supabase
       .from('reservations')
       .select('start_datetime, end_datetime')
@@ -469,13 +468,13 @@ export default function NewReservationPage() {
                 step >= 1 ? "text-gray-900" : "text-gray-400"
               )}>Seleccionar área</span>
             </div>
-            
+
             {/* Línea conectora */}
             <div className={cn(
               "flex-1 h-0.5 mx-2 transition-colors duration-300",
               step > 1 ? "bg-emerald-500" : "bg-gray-200"
             )} />
-            
+
             {/* Paso 2 */}
             <div className="flex items-center gap-2">
               <div className={cn(
@@ -489,13 +488,13 @@ export default function NewReservationPage() {
                 step >= 2 ? "text-gray-900" : "text-gray-400"
               )}>Configurar</span>
             </div>
-            
+
             {/* Línea conectora */}
             <div className={cn(
               "flex-1 h-0.5 mx-2 transition-colors duration-300",
               step > 2 ? "bg-emerald-500" : "bg-gray-200"
             )} />
-            
+
             {/* Paso 3 */}
             <div className="flex items-center gap-2">
               <div className={cn(
@@ -592,10 +591,10 @@ export default function NewReservationPage() {
                     </div>
                   )}
                   <div className="absolute top-2 right-2 bg-primary px-3 py-1 rounded-full text-xs font-bold text-white">
-                    {area.is_free 
-                      ? 'Gratuito' 
-                      : area.pricing_type === 'jornada' 
-                        ? 'Por Jornada' 
+                    {area.is_free
+                      ? 'Gratuito'
+                      : area.pricing_type === 'jornada'
+                        ? 'Por Jornada'
                         : `${formatCurrency(area.cost_per_hour)}/h`}
                   </div>
                 </div>
@@ -679,7 +678,7 @@ export default function NewReservationPage() {
                         const hasReservation = daysWithReservations.has(dateStr);
                         const isSelected = dateStr === selectedDate;
                         const isPast = day < new Date() && !isToday(day);
-                        
+
                         return (
                           <button
                             key={dateStr}
@@ -719,7 +718,7 @@ export default function NewReservationPage() {
                         <Calendar className="w-5 h-5 text-primary" />
                         <div>
                           <p className="text-sm font-medium text-gray-700">
-                            {selectedJornada 
+                            {selectedJornada
                               ? `Jornada seleccionada: ${selectedJornada === 'diurna' ? 'Diurna' : selectedJornada === 'nocturna' ? 'Nocturna' : 'Completo'}`
                               : 'Selecciona una jornada disponible'
                             }
@@ -752,25 +751,25 @@ export default function NewReservationPage() {
                     </>
                   )}
                 </div>
-{!isFree && (
-<div className="bg-gray-50 p-4 rounded-lg">
-  <div className="flex items-center gap-4">
-    <div className="p-3 bg-primary/10 rounded-lg">
-      {selectedArea.pricing_type === 'jornada' ? (
-        <Calendar className="w-5 h-5 text-primary" />
-      ) : (
-        <Clock className="w-5 h-5 text-primary" />
-      )}
-    </div>
-    <div>
-      <p className="text-xs text-gray-500">Inversión total</p>
-      <p className="text-xl font-bold">
-        {formatCurrency(calculateTotalCost())}
-      </p>
-    </div>
-  </div>
-</div>
-)}
+                {!isFree && (
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-primary/10 rounded-lg">
+                        {selectedArea.pricing_type === 'jornada' ? (
+                          <Calendar className="w-5 h-5 text-primary" />
+                        ) : (
+                          <Clock className="w-5 h-5 text-primary" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Inversión total</p>
+                        <p className="text-xl font-bold">
+                          {formatCurrency(calculateTotalCost())}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -785,21 +784,21 @@ export default function NewReservationPage() {
                       const endTime = selectedArea.jornada_end_diurna || '18:00';
                       const slotStart = parseISO(`${selectedDate}T${startTime}:00`);
                       const slotEnd = parseISO(`${selectedDate}T${endTime}:00`);
-                      
+
                       const isReserved = existingReservations.some(res => {
                         const resStart = parseISO(detoxTime(res.start_datetime));
                         const resEnd = parseISO(detoxTime(res.end_datetime));
                         return (slotStart < resEnd && slotEnd > resStart);
                       });
-                      
+
                       const maintenance = activeMaintenances.find(maint => {
                         const maintStart = parseISO(detoxTime(maint.starts_at));
                         const maintEnd = parseISO(detoxTime(maint.ends_at));
                         return (slotStart < maintEnd && slotEnd > maintStart);
                       });
-                      
+
                       const isDisabled = isReserved || !!maintenance;
-                      
+
                       return (
                         <div className="relative group">
                           <Button
@@ -825,12 +824,12 @@ export default function NewReservationPage() {
                               {isFree ? 'Gratis' : formatCurrency(selectedArea.cost_jornada_diurna || 0)}
                             </div>
                           </Button>
-                          
+
                           {isDisabled && (
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
-                            {maintenance ? `Mantenimiento: ${maintenance.title}` : 'Horario con reserva'}
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
-                          </div>
+                              {maintenance ? `Mantenimiento: ${maintenance.title}` : 'Horario con reserva'}
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                            </div>
                           )}
                         </div>
                       );
@@ -842,21 +841,21 @@ export default function NewReservationPage() {
                       const endTime = selectedArea.jornada_end_nocturna || '23:59';
                       const slotStart = parseISO(`${selectedDate}T${startTime}:00`);
                       const slotEnd = parseISO(`${selectedDate}T${endTime}:00`);
-                      
+
                       const isReserved = existingReservations.some(res => {
                         const resStart = parseISO(detoxTime(res.start_datetime));
                         const resEnd = parseISO(detoxTime(res.end_datetime));
                         return (slotStart < resEnd && slotEnd > resStart);
                       });
-                      
+
                       const maintenance = activeMaintenances.find(maint => {
                         const maintStart = parseISO(detoxTime(maint.starts_at));
                         const maintEnd = parseISO(detoxTime(maint.ends_at));
                         return (slotStart < maintEnd && slotEnd > maintStart);
                       });
-                      
+
                       const isDisabled = isReserved || !!maintenance;
-                      
+
                       return (
                         <div className="relative group">
                           <Button
@@ -882,7 +881,7 @@ export default function NewReservationPage() {
                               {isFree ? 'Gratis' : formatCurrency(selectedArea.cost_jornada_nocturna || 0)}
                             </div>
                           </Button>
-                          
+
                           {isDisabled && (
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
                               {maintenance ? `Mantenimiento: ${maintenance.title}` : 'Horario con reserva'}
@@ -899,21 +898,21 @@ export default function NewReservationPage() {
                       const endTime = selectedArea.jornada_end_nocturna || '23:59';
                       const slotStart = parseISO(`${selectedDate}T${startTime}:00`);
                       const slotEnd = parseISO(`${selectedDate}T${endTime}:00`);
-                      
+
                       const isReserved = existingReservations.some(res => {
                         const resStart = parseISO(detoxTime(res.start_datetime));
                         const resEnd = parseISO(detoxTime(res.end_datetime));
                         return (slotStart < resEnd && slotEnd > resStart);
                       });
-                      
+
                       const maintenance = activeMaintenances.find(maint => {
                         const maintStart = parseISO(detoxTime(maint.starts_at));
                         const maintEnd = parseISO(detoxTime(maint.ends_at));
                         return (slotStart < maintEnd && slotEnd > maintStart);
                       });
-                      
+
                       const isDisabled = isReserved || !!maintenance;
-                      
+
                       return (
                         <div className="relative group">
                           <Button
@@ -939,7 +938,7 @@ export default function NewReservationPage() {
                               {isFree ? 'Gratis' : formatCurrency(selectedArea.cost_jornada_ambos || 0)}
                             </div>
                           </Button>
-                          
+
                           {isDisabled && (
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 translate-y-2 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 z-50 whitespace-nowrap">
                               {maintenance ? `Mantenimiento: ${maintenance.title}` : 'Horario con reserva'}
@@ -963,12 +962,12 @@ export default function NewReservationPage() {
                         </div>
                       </div>
                     )}
-                    
+
                     <div className="grid grid-cols-4 gap-3">
                       {timeSlots.map(time => {
                         const info = getSlotStatus(time);
                         const isOccupied = info.status !== 'available';
-                        
+
                         // Calcular si este horario está dentro del rango seleccionado
                         const isInRange = selectedStartTime && duration > 0 && (() => {
                           const selectedHour = parseInt(selectedStartTime.split(':')[0]);
@@ -1011,7 +1010,7 @@ export default function NewReservationPage() {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="flex gap-4 pt-2 text-xs text-gray-500">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-white border border-gray-200" />
@@ -1119,13 +1118,13 @@ export default function NewReservationPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
-            <Button 
-                className="w-full" 
-                onClick={handleReserve} 
-                disabled={createMutation.isPending || updateMutation.isPending}
+            <Button
+              className="w-full"
+              onClick={handleReserve}
+              disabled={createMutation.isPending || updateMutation.isPending}
             >
-              {createMutation.isPending || updateMutation.isPending 
-                ? "Procesando..." 
+              {createMutation.isPending || updateMutation.isPending
+                ? "Procesando..."
                 : isFree ? "Confirmar Reserva Gratis" : "Confirmar y proceder al pago"}
             </Button>
             <Button variant="ghost" className="w-full" onClick={() => setStep(2)}>
