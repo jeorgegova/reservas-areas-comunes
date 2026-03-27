@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
+import { useCommonAreasQuery } from '@/hooks/useCommonAreas';
+import { useCreateReservationMutation, useUpdateReservationMutation } from '@/hooks/useReservations';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import * as reservationService from '@/services/reservations';
+import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,7 +40,6 @@ export default function NewReservationPage() {
   const isEditing = !!id;
 
   const [step, setStep] = useState(1);
-  const [areas, setAreas] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedArea, setSelectedArea] = useState<any>(null);
   const isFree = selectedArea?.is_free || false;
@@ -55,24 +58,65 @@ export default function NewReservationPage() {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [userSearchTerm, setUserSearchTerm] = useState<string>('');
 
-  const [loading, setLoading] = useState(false);
   const [blockingError, setBlockingError] = useState<string | null>(null);
   const [isErrorAlertOpen, setIsErrorAlertOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [userError, setUserError] = useState<string | null>(null);
 
+  // React Query Hooks
+  const { data: areasData = [] } = useCommonAreasQuery(profile?.organization_id);
+  const createMutation = useCreateReservationMutation();
+  const updateMutation = useUpdateReservationMutation();
+  const queryClient = useQueryClient();
+
+  // Fetch single reservation for edit using useQuery
+  const { data: reservationToEdit, isLoading: isEditLoading } = useQuery({
+    queryKey: ['reservation', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('*, common_areas(*)')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: isEditing && !!id,
+  });
+
   useEffect(() => {
     if (profile?.organization_id) {
       checkPendingReservations();
-      fetchAreas();
       if (isAdmin) {
         fetchUsers();
       }
-      if (isEditing) {
-        fetchReservationToEdit();
-      }
     }
-  }, [profile?.organization_id, id, isAdmin, isEditing]);
+  }, [profile?.organization_id, isAdmin]);
+
+  useEffect(() => {
+    if (reservationToEdit && isEditing) {
+      // Logic from fetchReservationToEdit
+      if (reservationToEdit.user_id !== profile?.id && !isAdmin) {
+        setBlockingError('No tienes permiso para editar esta reserva.');
+        return;
+      }
+      if (reservationToEdit.status !== 'pending_validation' && !isAdmin) {
+        setBlockingError('Solo se pueden editar reservas con estado Pendiente Validación.');
+        return;
+      }
+
+      setSelectedArea(reservationToEdit.common_areas);
+      const startDate = new Date(reservationToEdit.start_datetime);
+      setSelectedDate(format(startDate, 'yyyy-MM-dd'));
+      setSelectedStartTime(format(startDate, 'HH:mm'));
+      
+      const endDate = new Date(reservationToEdit.end_datetime);
+      const diffMs = endDate.getTime() - startDate.getTime();
+      const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+      setDuration(diffHours);
+      setStep(2);
+    }
+  }, [reservationToEdit, isEditing, profile?.id, isAdmin]);
 
   useEffect(() => {
     console.log('NewReservation: subscriptionStatus', subscriptionStatus, 'daysUntilExpiry', daysUntilExpiry, 'subscriptionLoading', subscriptionLoading, 'previousExpired', previousSubscriptionExpiredBeyond20Days);
@@ -84,78 +128,6 @@ export default function NewReservationPage() {
       setBlockingError(null);
     }
   }, [subscriptionStatus, daysUntilExpiry, subscriptionLoading, previousSubscriptionExpiredBeyond20Days]);
-
-  const fetchReservationToEdit = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('reservations')
-        .select('*, common_areas(*)')
-        .eq('id', id)
-        .eq('organization_id', profile?.organization_id)
-        .single();
-
-      if (error) throw error;
-      if (data) {
-        // Verificar que sea el dueño o sea admin
-        if (data.user_id !== profile?.id && !isAdmin) {
-          setBlockingError('No tienes permiso para editar esta reserva.');
-          return;
-        }
-
-        // Restricción: Solo pendiente_validation (como pidió el usuario)
-        if (data.status !== 'pending_validation' && !isAdmin) {
-          setBlockingError('Solo se pueden editar reservas con estado Pendiente Validación.');
-          return;
-        }
-
-        setSelectedArea(data.common_areas);
-        const startDate = new Date(data.start_datetime);
-        setSelectedDate(format(startDate, 'yyyy-MM-dd'));
-        setSelectedStartTime(format(startDate, 'HH:mm'));
-        
-        // Calcular duración en horas
-        const endDate = new Date(data.end_datetime);
-        const diffMs = endDate.getTime() - startDate.getTime();
-        const diffHours = Math.round(diffMs / (1000 * 60 * 60));
-        setDuration(diffHours);
-
-        // Identificar jornada si aplica
-        const hour = startDate.getHours();
-        if (hour >= 8 && hour < 18) {
-           // Simplificación: si empieza en el rango diurno, marcar como tal
-           // En una app real esto sería más preciso basándose en la configuración del área
-        }
-
-        setStep(2); // Ir directo al paso de horario
-      }
-    } catch (error: any) {
-      console.error('Error fetching reservation for edit:', error);
-      setErrorMessage('No se pudo cargar la reserva para editar.');
-      setIsErrorAlertOpen(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchUsers = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, full_name, email, apartment')
-      .eq('organization_id', profile?.organization_id)
-      .eq('role', 'user')
-      .order('full_name');
-
-    if (data) {
-      setUsers(data);
-    }
-  };
-
-  const filteredUsers = users.filter(user =>
-    user.full_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-    user.apartment?.toLowerCase().includes(userSearchTerm.toLowerCase())
-  );
 
   const checkPendingReservations = async () => {
     if (!profile) return;
@@ -172,15 +144,24 @@ export default function NewReservationPage() {
     }
   };
 
-  const fetchAreas = async () => {
-    if (!profile?.organization_id) return;
+  const fetchUsers = async () => {
     const { data } = await supabase
-      .from('common_areas')
-      .select('*')
-      .eq('organization_id', profile.organization_id)
-      .eq('is_active', true);
-    setAreas(data || []);
+      .from('profiles')
+      .select('id, full_name, email, apartment')
+      .eq('organization_id', profile?.organization_id)
+      .eq('role', 'user')
+      .order('full_name');
+
+    if (data) {
+      setUsers(data);
+    }
   };
+
+  const filteredUsers = users.filter((user: any) =>
+    user.full_name?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+    user.email?.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+    user.apartment?.toLowerCase().includes(userSearchTerm.toLowerCase())
+  );
 
   const fetchBusySlots = async (areaId: string) => {
     // Fetch reservations
@@ -368,8 +349,8 @@ export default function NewReservationPage() {
       .eq('common_area_id', selectedArea.id)
       .eq('organization_id', profile?.organization_id)
       .in('status', ['approved', 'pending_validation', 'pending_payment'])
-      .gte('start_datetime', monthStart.toISOString())
-      .lte('start_datetime', monthEnd.toISOString());
+      .lt('start_datetime', monthEnd.toISOString())
+      .gt('end_datetime', monthStart.toISOString());
 
     if (data) {
       const days = new Set<string>();
@@ -396,89 +377,51 @@ export default function NewReservationPage() {
   const handleReserve = async () => {
     if (!profile || !selectedArea || !selectedStartTime) return;
 
-    // Para áreas por jornada, validar disponibilidad
-    if (selectedArea.pricing_type === 'jornada') {
-      if (!selectedJornada) {
-        setBlockingError('Por favor selecciona una jornada (diurna, nocturna o completo)');
-        setLoading(false);
-        return;
-      }
-      // Verificar disponibilidad antes de crear
-      const availability = checkJornadaAvailability();
-      if (!availability.available) {
-        setBlockingError(availability.message || 'El horario seleccionado ya no está disponible');
-        setLoading(false);
-        return;
-      }
+    // Para áreas por jornada, validar selección
+    if (selectedArea.pricing_type === 'jornada' && !selectedJornada) {
+      setBlockingError('Por favor selecciona una jornada (diurna, nocturna o completo)');
+      return;
     }
 
     // Limpiar errores anteriores
     setBlockingError(null);
 
-    setLoading(true);
     const start = `${selectedDate}T${selectedStartTime}:00`;
     const end = getEndTime();
     const totalCost = calculateTotalCost();
 
-    // Verificar que el usuario ha seleccionado un usuario
     if (isAdmin && (!selectedUserId || selectedUserId.length === 0)) {
       setBlockingError('Por favor selecciona un usuario para la reserva');
-      setLoading(false);
       return;
     }
 
-    // Para admins: usar el usuario seleccionado, para usuarios normales: usar su propio perfil
     const reservationUserId = (isAdmin && selectedUserId && selectedUserId.length > 0) ? selectedUserId : profile.id;
+    const reservationStatus = isFree ? 'pending_validation' : 'pending_payment';
+
+    const reservationData: Partial<reservationService.Reservation> = {
+      user_id: reservationUserId,
+      common_area_id: selectedArea.id,
+      start_datetime: start,
+      end_datetime: end,
+      total_cost: totalCost,
+      organization_id: profile?.organization_id,
+      status: reservationStatus
+    };
 
     try {
       if (isEditing) {
-        const { error } = await supabase
-          .from('reservations')
-          .update({
-            common_area_id: selectedArea.id,
-            start_datetime: start,
-            end_datetime: end,
-            total_cost: totalCost,
-            organization_id: profile?.organization_id
-          })
-          .eq('id', id)
-          .eq('organization_id', profile?.organization_id);
-
-        if (error) throw error;
-        navigate('/reservations/my');
-        return;
-      }
-
-      const reservationStatus = isFree ? 'pending_validation' : 'pending_payment';
-
-      const { data, error } = await supabase
-        .from('reservations')
-        .insert({
-          user_id: reservationUserId,
-          common_area_id: selectedArea.id,
-          start_datetime: start,
-          end_datetime: end,
-          total_cost: totalCost,
-          organization_id: profile?.organization_id,
-          status: reservationStatus
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (isFree) {
-        // No payment needed, redirect to reservations list
-        navigate('/reservations/my');
+        await updateMutation.mutateAsync({ id: id!, data: reservationData });
       } else {
-        // Redirect to payment page
-        navigate(`/payment/${data.id}`);
+        const result = await createMutation.mutateAsync(reservationData);
+        if (!isFree && result?.id) {
+          navigate(`/payment/${result.id}`);
+          return;
+        }
       }
+      navigate('/reservations/my');
     } catch (error: any) {
-      setErrorMessage(error.message || 'Error al crear la reserva');
+      setErrorMessage(error.message || 'Error al procesar la reserva');
       setIsErrorAlertOpen(true);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -634,7 +577,7 @@ export default function NewReservationPage() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {areas.map((area) => (
+            {areasData.map((area: any) => (
               <Card
                 key={area.id}
                 className="border-none shadow-sm bg-white hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
@@ -1176,8 +1119,14 @@ export default function NewReservationPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
-            <Button className="w-full" onClick={handleReserve} disabled={loading}>
-              {loading ? "Procesando..." : isFree ? "Confirmar Reserva Gratis" : "Confirmar y proceder al pago"}
+            <Button 
+                className="w-full" 
+                onClick={handleReserve} 
+                disabled={createMutation.isPending || updateMutation.isPending}
+            >
+              {createMutation.isPending || updateMutation.isPending 
+                ? "Procesando..." 
+                : isFree ? "Confirmar Reserva Gratis" : "Confirmar y proceder al pago"}
             </Button>
             <Button variant="ghost" className="w-full" onClick={() => setStep(2)}>
               <ChevronLeft className="w-4 h-4 mr-2" />

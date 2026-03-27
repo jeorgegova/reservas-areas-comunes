@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, detoxTime, formatDate, formatDateTimeISO } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useCommonAreasQuery } from '@/hooks/useCommonAreas';
+import { useReservationsQuery } from '@/hooks/useReservations';
+import { useQueryClient } from '@tanstack/react-query';
+import * as reservationService from '@/services/reservations';
 import {
     Filter,
     Calendar,
@@ -37,7 +41,7 @@ import {
     AreaChart,
     Area
 } from 'recharts';
-import { startOfMonth, endOfMonth, subMonths, format, eachMonthOfInterval } from 'date-fns';
+import { startOfMonth, endOfMonth, subMonths, format, eachMonthOfInterval, addMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // Colores para gráficos
@@ -57,11 +61,21 @@ export default function Calendario() {
     const [selectedAreaId, setSelectedAreaId] = useState<string>('all');
 
     // Estado para el dashboard residente
-    const [areas, setAreas] = useState<any[]>([]);
-    const [reservations, setReservations] = useState<any[]>([]);
-    const [notices, setNotices] = useState<any[]>([]);
     const [calendarRange, setCalendarRange] = useState<{ start: string; end: string } | null>(null);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const queryClient = useQueryClient();
+
+    // Queries
+    const { data: areasData = [] } = useCommonAreasQuery(profile?.organization_id);
+    const { data: reservationsData = [] } = useReservationsQuery(
+        profile?.organization_id,
+        calendarRange?.start || startOfMonth(new Date()).toISOString(),
+        calendarRange?.end || endOfMonth(new Date()).toISOString()
+    );
+
+    // For notices, we'll still use a simple query for now or create a hook if needed
+    // Given the prompt focuses on reservations, I'll keep notices minimal for now but use the same range logic
+    const [notices, setNotices] = useState<any[]>([]);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -85,65 +99,30 @@ export default function Calendario() {
 
     useEffect(() => {
         if (calendarRange) {
-            fetchResidentData(calendarRange.start, calendarRange.end);
-        } else {
-            fetchResidentData();
+            fetchNotices(calendarRange.start, calendarRange.end);
         }
-
+        
         if (showAnalytics) {
             fetchAdminData();
         }
-    }, [showAnalytics, selectedMonth, selectedAreaId, calendarRange]);
+    }, [showAnalytics, selectedMonth, selectedAreaId, calendarRange, profile?.organization_id]); // Added profile.organization_id to dependencies
 
-    const fetchResidentData = async (startRange?: string, endRange?: string) => {
+    const fetchNotices = async (startRange: string, endRange: string) => {
         try {
-            const { data: areasData } = await supabase
-                .from('common_areas')
-                .select('*')
-                .eq('organization_id', profile?.organization_id)
-                .eq('is_active', true);
-
-            // Fetch reservations within the visible range if provided
-            let resQuery = supabase
-                .from('reservations')
-                .select(`
-                    *,
-                    common_areas (name)
-                `)
-                .eq('organization_id', profile?.organization_id)
-                .in('status', ['approved', 'pending_validation', 'pending_payment']);
-
-            if (startRange && endRange) {
-                resQuery = resQuery
-                    .gte('start_datetime', startRange)
-                    .lte('start_datetime', endRange); // Checking start_datetime for the range
-            }
-
-            const { data: resData } = await resQuery;
-
-            // Fetch notices for the visible range (only active)
-            let noticeQuery = supabase
+            const { data } = await supabase
                 .from('maintenance_notices')
                 .select(`
                     *,
                     common_areas (name)
                 `)
                 .eq('organization_id', profile?.organization_id)
-                .eq('is_active', true);
+                .eq('is_active', true)
+                .gte('starts_at', startRange)
+                .lte('ends_at', endRange);
 
-            if (startRange && endRange) {
-                noticeQuery = noticeQuery
-                    .gte('starts_at', startRange)
-                    .lte('ends_at', endRange);
-            }
-
-            const { data: noticeData } = await noticeQuery;
-
-            setAreas(areasData || []);
-            setReservations(resData || []);
-            setNotices(noticeData || []);
+            setNotices(data || []);
         } catch (error) {
-            console.error('Error fetching dashboard data:', error);
+            console.error('Error fetching notices:', error);
         }
     };
 
@@ -170,11 +149,11 @@ export default function Calendario() {
                 .eq('organization_id', profile?.organization_id)
                 .eq('role', 'user');
 
-            // Obtener áreas
-            const { data: areasData } = await supabase
-                .from('common_areas')
-                .select('*')
-                .eq('organization_id', profile?.organization_id);
+            // Areas are now from useCommonAreasQuery (areasData)
+            // const { data: areasData } = await supabase
+            //     .from('common_areas')
+            //     .select('*')
+            //     .eq('organization_id', profile?.organization_id);
 
             // Procesar datos para gráficos
             const processedData = processAdminData(allReservations || [], areasData || [], usersData?.length || 0);
@@ -359,11 +338,11 @@ export default function Calendario() {
         }
     };
 
-    const reservationEvents = reservations
-        .filter(res => selectedAreaId === 'all' || res.common_area_id === selectedAreaId)
-        .map(res => ({
+    const reservationEvents = reservationsData
+        .filter((res: any) => selectedAreaId === 'all' || res.common_area_id === selectedAreaId)
+        .map((res: any) => ({
             id: res.id,
-            title: `${res.common_areas.name}`,
+            title: `${res.common_areas?.name || 'Área'}`,
             start: detoxTime(res.start_datetime),
             end: detoxTime(res.end_datetime),
             backgroundColor: getStatusColor(res.status),
@@ -372,7 +351,7 @@ export default function Calendario() {
             extendedProps: {
                 type: 'reservation',
                 status: res.status,
-                area: res.common_areas.name
+                area: res.common_areas?.name || 'Área'
             }
         }));
 
@@ -433,7 +412,7 @@ export default function Calendario() {
                                 className="text-sm font-medium bg-transparent border-none focus:ring-0 outline-none text-gray-700 cursor-pointer"
                             >
                                 <option value="all">Todas las áreas</option>
-                                {areas.map(area => (
+                                {areasData.map(area => (
                                     <option key={area.id} value={area.id}>{area.name}</option>
                                 ))}
                             </select>
@@ -793,7 +772,7 @@ export default function Calendario() {
                                     className="text-[10px] sm:text-xs font-bold bg-transparent border-none focus:ring-0 outline-none text-gray-700 cursor-pointer"
                                 >
                                     <option value="all">Todas</option>
-                                    {areas.map(area => (
+                                    {areasData.map((area: any) => (
                                         <option key={area.id} value={area.id}>{area.name}</option>
                                     ))}
                                 </select>
@@ -803,11 +782,11 @@ export default function Calendario() {
                             <div className="calendar-container compact-calendar overflow-hidden">
                                 <FullCalendar
                                     plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-                                    initialView="dayGridMonth"
+                                    initialView={isMobile ? "timeGridDay" : "dayGridMonth"}
                                     headerToolbar={{
-                                        left: isMobile ? 'prev,next' : 'prev,next today',
+                                        left: 'prev,next today',
                                         center: 'title',
-                                        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                                        right: isMobile ? 'timeGridDay,timeGridWeek' : 'dayGridMonth,timeGridWeek,timeGridDay'
                                     }}
                                     buttonText={{
                                         today: 'Hoy',
@@ -909,10 +888,23 @@ export default function Calendario() {
                                         );
                                     }}
                                     datesSet={(dateInfo) => {
-                                        setCalendarRange({
-                                            start: dateInfo.startStr,
-                                            end: dateInfo.endStr
-                                        });
+                                        const start = dateInfo.startStr;
+                                        const end = dateInfo.endStr;
+                                        
+                                        if (calendarRange?.start !== start || calendarRange?.end !== end) {
+                                            setCalendarRange({ start, end });
+                                            
+                                            // Prefetch next range (e.g. next month)
+                                            // dateInfo.view.currentStart is the start of the current view (e.g. start of month)
+                                            const nextRangeStart = addMonths(new Date(dateInfo.view.currentStart), 1);
+                                            const pStart = startOfMonth(nextRangeStart).toISOString();
+                                            const pEnd = endOfMonth(nextRangeStart).toISOString();
+                                            
+                                            queryClient.prefetchQuery({
+                                                queryKey: ['reservations', profile?.organization_id, pStart, pEnd],
+                                                queryFn: () => reservationService.getReservations(profile?.organization_id!, pStart, pEnd)
+                                            });
+                                        }
                                     }}
                                     events={allEvents}
                                     eventDidMount={(info) => {
